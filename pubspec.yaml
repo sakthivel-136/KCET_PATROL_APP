@@ -1,0 +1,42 @@
+name: veripatrol
+description: A new Flutter project.
+publish_to: 'none'
+version: 0.1.0
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.2
+  mobile_scanner: ^3.2.0
+  intl: ^0.18.1
+  mailer: ^6.0.1
+  geolocator: ^13.0.1
+  path_provider: ^2.0.15
+  screenshot: ^3.0.0
+  sqflite: ^2.2.8+4
+  path: ^1.8.3
+  connectivity_plus: ^4.0.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  flutter_launcher_icons: ^0.13.1 # Added the package version here
+
+# --- CORRECT PLACEMENT FOR ASSETS ---
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/logo.png
+
+# --- APP ICON CONFIGURATION ---
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/logo.png"
+  adaptive_icon_background: "#000000"
+  adaptive_icon_foreground: "assets/logo.png"
+  
