@@ -1,282 +1,193 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:intl/intl.dart';
-import 'package:mailer/mailer.dart' as mailer;
-import 'package:mailer/smtp_server.dart';
-import 'package:geolocator/geolocator.dart';
-import 'dart:async';
-import 'dart:io';
-import 'package:path_provider/path_provider.dart';
-import 'package:screenshot/screenshot.dart';
-import 'package:sqflite/sqflite.dart';
-import 'package:path/path.dart' as p;
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:timezone/data/latest_all.dart' as tz;
+import 'package:timezone/timezone.dart' as tz;
+import 'home_page.dart';
+
+final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  tz.initializeTimeZones();
+
+  await Supabase.initialize(
+    url: 'https://iztwxujppgavovmbgkrm.supabase.co',
+    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml6dHd4dWpwcGdhdm92bWJna3JtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg0MTY4ODMsImV4cCI6MjA4Mzk5Mjg4M30.EXtWPyOb7NXoP9s1lXorv_jxfVmB8SWUlb8MgMmLtT0',
+  );
+
+  // Initialize Notifications
+  const AndroidInitializationSettings initializationSettingsAndroid = AndroidInitializationSettings('@mipmap/ic_launcher');
+  await flutterLocalNotificationsPlugin.initialize(const InitializationSettings(android: initializationSettingsAndroid));
+
+  // Create Notification Channel for Android 8+
+  final AndroidFlutterLocalNotificationsPlugin? androidImplementation =
+      flutterLocalNotificationsPlugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+
+  await androidImplementation?.createNotificationChannel(const AndroidNotificationChannel(
+    'patrol_channel_id', 
+    'Patrol Alerts',
+    importance: Importance.max,
+    sound: RawResourceAndroidNotificationSound('alert'),
+  ));
+
   runApp(const VeriPatrolApp());
 }
 
-// --- 🛠️ DATABASE & SYNC ENGINE ---
-class DBHelper {
-  static Database? _db;
-  static Future<Database> get database async {
-    if (_db != null) return _db!;
-    _db = await openDatabase(
-      p.join(await getDatabasesPath(), 'veripatrol_v7.db'),
-      onCreate: (db, version) => db.execute(
-          "CREATE TABLE logs(id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT, qr_id TEXT, lat REAL, lon REAL, time TEXT, status TEXT)"),
-      version: 1,
-    );
-    return _db!;
-  }
-
-  static Future<void> saveLog(String type, String qr, double lat, double lon, String status) async {
-    final db = await database;
-    await db.insert('logs', {
-      'type': type, 'qr_id': qr, 'lat': lat, 'lon': lon,
-      'time': DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now()),
-      'status': status,
-    });
-  }
-
-  static Future<void> syncOfflineLogs() async {
-    final db = await database;
-    List<Map<String, dynamic>> pending = await db.query('logs', where: 'status = ?', whereArgs: ['PENDING_SYNC']);
-    if (pending.isEmpty) return;
-
-    final smtpServer = gmail("c.sakthivel1.3.2006@gmail.com", "nukmunhdqskltnze");
-    
-    for (var log in pending) {
-      try {
-        final message = mailer.Message()
-          ..from = const mailer.Address("c.sakthivel1.3.2006@gmail.com", 'VeriPatrol Sync')
-          ..recipients.add("godwinsamraj16@gmail.com")
-          ..subject = '📊 Offline Log Synced: ${log['type']}'
-          ..text = 'Recovered Log:\nType: ${log['type']}\nTime: ${log['time']}\nMap: http://google.com/maps?q=${log['lat']},${log['lon']}';
-
-        await mailer.send(message, smtpServer);
-        await db.update('logs', {'status': 'SENT_AFTER_SYNC'}, where: 'id = ?', whereArgs: [log['id']]);
-      } catch (e) {
-        debugPrint("Sync failed for ID ${log['id']}");
-      }
-    }
-  }
-}
-
-class AppConfig {
-  static bool isTamil = false;
-  static String t(String en, String ta) => isTamil ? ta : en;
-}
-
-class VeriPatrolApp extends StatefulWidget {
+class VeriPatrolApp extends StatelessWidget {
   const VeriPatrolApp({super.key});
-  @override
-  State<VeriPatrolApp> createState() => _VeriPatrolAppState();
-}
-
-class _VeriPatrolAppState extends State<VeriPatrolApp> {
-  @override
-  void initState() {
-    super.initState();
-    _handleStartup();
-  }
-
-  Future<void> _handleStartup() async {
-    await Geolocator.requestPermission();
-    await DBHelper.syncOfflineLogs();
-  }
-
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(brightness: Brightness.dark, scaffoldBackgroundColor: Colors.black, fontFamily: 'monospace'),
-      home: LoginScreen(onLangToggle: () => setState(() => AppConfig.isTamil = !AppConfig.isTamil)),
+      theme: ThemeData(primarySwatch: Colors.blue, useMaterial3: true),
+      home: const LoginScreen(),
     );
   }
 }
 
-// --- 1. LOGIN SCREEN WITH LOGO ---
-class LoginScreen extends StatelessWidget {
-  final VoidCallback onLangToggle;
-  LoginScreen({super.key, required this.onLangToggle});
-  final TextEditingController _pin = TextEditingController();
-
+class LoginScreen extends StatefulWidget {
+  const LoginScreen({super.key});
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0, actions: [
-        TextButton(onPressed: onLangToggle, child: Text(AppConfig.t("English", "தமிழ்")))
-      ]),
-      body: Center(
-        child: SingleChildScrollView(
-          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-            // APP LOGO DISPLAY
-            Image.asset('assets/logo.png', height: 150, width: 150, errorBuilder: (c, e, s) => const Icon(Icons.security, size: 100, color: Colors.blueAccent)),
-            const SizedBox(height: 30),
-            Text(AppConfig.t("VERIPATROL CORE", "வெரிபெட்ரோல் கோர்"), style: const TextStyle(fontSize: 18, letterSpacing: 2, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 50),
-            SizedBox(width: 220, child: TextField(
-              controller: _pin, obscureText: true, keyboardType: TextInputType.number, maxLength: 4, textAlign: TextAlign.center,
-              onChanged: (v) {
-                if (v == "1111" || v == "1234") {
-                  DBHelper.syncOfflineLogs();
-                  Navigator.pushReplacement(context, MaterialPageRoute(builder: (c) => HomePage(guardName: v == "1111" ? "CHANDRU" : "SARAN")));
-                }
-              },
-              decoration: InputDecoration(hintText: "****", fillColor: Colors.grey[900], filled: true, border: OutlineInputBorder(borderRadius: BorderRadius.circular(15))),
-            )),
-          ]),
-        ),
-      ),
-    );
-  }
+  State<LoginScreen> createState() => _LoginScreenState();
 }
 
-// --- 2. HOME PAGE ---
-class HomePage extends StatefulWidget {
-  final String guardName;
-  const HomePage({super.key, required this.guardName});
-  @override
-  State<HomePage> createState() => _HomePageState();
-}
-
-class _HomePageState extends State<HomePage> {
-  String _time = "";
-  late Timer _t;
+class _LoginScreenState extends State<LoginScreen> {
+  final _passCtrl = TextEditingController();
+  bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
-    _t = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (mounted) setState(() => _time = DateFormat('HH:mm:ss').format(DateTime.now()));
-    });
+    _scheduleBackgroundAlarms();
   }
 
-  @override
-  void dispose() { _t.cancel(); super.dispose(); }
+  // LOGIC: Determine current "Lot" based on 5-min early rule and fixed 9PM slots
+  DateTime _getCurrentLotStart() {
+    final now = DateTime.now();
+    final h = now.hour;
+    final m = now.minute;
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(widget.guardName), centerTitle: true),
-      body: Center(
-        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          GestureDetector(
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (c) => const ScanningPage())),
-            child: Container(
-              padding: const EdgeInsets.all(30),
-              decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.blueAccent, width: 2)),
-              child: const Icon(Icons.qr_code_scanner, size: 80, color: Colors.blueAccent),
-            ),
-          ),
-          const SizedBox(height: 40),
-          Text(_time, style: const TextStyle(fontSize: 50, fontWeight: FontWeight.bold, color: Colors.white)),
-        ]),
-      ),
-    );
+    // 1. Fixed Special Lot: 9:31 PM to 9:50 PM
+    if (h == 21 && m >= 31 && m <= 54) {
+      return DateTime(now.year, now.month, now.day, 21, 31);
+    }
+    
+    // 2. Fixed Special Lot: 9:00 PM to 9:30 PM (Starts at 8:55 PM)
+    if ((h == 20 && m >= 55) || (h == 21 && m <= 30)) {
+      return DateTime(now.year, now.month, now.day, 21, 0);
+    }
+
+    // 3. Night Lots: 10 PM - 6 AM (30-min intervals with 5-min buffer)
+    if (h >= 22 || h < 6) {
+      int effectiveMinute = m + 5; 
+      int startMin = (effectiveMinute < 30) ? 0 : (effectiveMinute < 60 ? 30 : 0);
+      int effectiveHour = (effectiveMinute >= 60) ? h + 1 : h;
+      return DateTime(now.year, now.month, now.day, effectiveHour, startMin);
+    } 
+
+    // 4. Day Lots: 6 AM - 8:59 PM (1-hour intervals with 5-min buffer)
+    int effectiveHourDay = (m >= 55) ? h + 1 : h;
+    return DateTime(now.year, now.month, now.day, effectiveHourDay, 0);
   }
-}
 
-// --- 3. SCANNING PAGE ---
-class ScanningPage extends StatefulWidget {
-  const ScanningPage({super.key});
-  @override
-  State<ScanningPage> createState() => _ScanningPageState();
-}
-
-class _ScanningPageState extends State<ScanningPage> {
-  final MobileScannerController ctrl = MobileScannerController();
-  final ScreenshotController screenshotController = ScreenshotController();
-  final Map<String, String> _status = {"loc1": "PENDING", "loc2": "PENDING", "loc3": "PENDING"};
-  bool _isSosBusy = false;
-  int _wait = 0;
-  String? _activeQr;
-
-  Future<void> _triggerSos() async {
-    if (_isSosBusy) return;
-    setState(() => _isSosBusy = true);
-    HapticFeedback.vibrate();
-
-    double lat = 0.0; double lon = 0.0;
-    Uint8List? image = await screenshotController.capture();
-
-    try {
-      Position pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high).timeout(const Duration(seconds: 8));
-      lat = pos.latitude; lon = pos.longitude;
-
-      final smtpServer = gmail("c.sakthivel1.3.2006@gmail.com", "nukmunhdqskltnze");
-      final message = mailer.Message()
-        ..from = const mailer.Address("c.sakthivel1.3.2006@gmail.com", 'VeriPatrol SOS')
-        ..recipients.add("godwinsamraj16@gmail.com")
-        ..subject = '🚨 SOS EMERGENCY ALERT'
-        ..text = 'Guard in Distress!\nLocation: http://google.com/maps?q=$lat,$lon';
-
-      if (image != null) {
-        final temp = await getTemporaryDirectory();
-        final file = await File('${temp.path}/sos_snap.png').writeAsBytes(image);
-        message.attachments.add(mailer.FileAttachment(file));
-      }
-
-      await mailer.send(message, smtpServer);
-      await DBHelper.saveLog("SOS", "EMERGENCY", lat, lon, "SENT_LIVE");
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("🚀 SOS SENT LIVE"), backgroundColor: Colors.green));
-
-    } catch (e) {
-      await DBHelper.saveLog("SOS", "EMERGENCY", lat, lon, "PENDING_SYNC");
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("📁 OFFLINE: Saved for Sync"), backgroundColor: Colors.orange));
-    } finally {
-      if (mounted) setState(() => _isSosBusy = false);
+  Future<void> _scheduleBackgroundAlarms() async {
+    await flutterLocalNotificationsPlugin.cancelAll();
+    final now = tz.TZDateTime.now(tz.local);
+    
+    // Schedule for the next 5 hours (5 mins before each hour/half-hour)
+    for (int i = 1; i <= 5; i++) {
+      final scheduledTime = now.add(Duration(hours: i)).subtract(const Duration(minutes: 5));
+      await flutterLocalNotificationsPlugin.zonedSchedule(
+        i, 'PATROL ALERT', 'Patrol starts in 5 minutes!', scheduledTime,
+        const NotificationDetails(android: AndroidNotificationDetails('patrol_channel_id', 'Patrol Alerts', sound: RawResourceAndroidNotificationSound('alert'))),
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+      );
     }
   }
 
-  void _onDetect(BarcodeCapture capture) async {
-    final String? qr = capture.barcodes.first.rawValue;
-    if (qr == null || _wait > 0 || !_status.containsKey(qr)) return;
+  Future<void> _handlePinEntry(String value) async {
+    if (value.length == 4) {
+      setState(() => _isLoading = true);
+      final client = Supabase.instance.client;
+      try {
+        final userData = await client.from('security_users').select('security_name, factory').eq('security_password', value).maybeSingle();
 
-    try {
-      Position pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.low);
-      if (_status[qr] == "PENDING" && _activeQr == null) {
-        setState(() { _activeQr = qr; _status[qr] = "WAITING..."; _wait = 60; });
-        Timer.periodic(const Duration(seconds: 1), (t) {
-          if (_wait > 0) { if (mounted) setState(() => _wait--); } 
-          else { t.cancel(); if (mounted) setState(() => _status[qr] = "RE-SCAN"); }
-        });
-      } else if (_status[qr] == "RE-SCAN" && _activeQr == qr) {
-        await DBHelper.saveLog("SCAN", qr, pos.latitude, pos.longitude, "COMPLETED");
-        setState(() { _status[qr] = "COMPLETED"; _activeQr = null; });
-        if (_status.values.every((v) => v == "COMPLETED") && mounted) Navigator.pop(context, true);
+        if (userData != null) {
+          String name = userData['security_name'];
+          String fCode = userData['factory'];
+          
+          if (name.toUpperCase() == "MASTER") {
+            _goToHome(name, fCode, true);
+            return;
+          }
+
+          // Check if this LOT is already done
+          final lotStart = _getCurrentLotStart();
+          final existing = await client.from('scanning_details').select('id')
+              .eq('factory_code', fCode)
+              .gte('scan_time', lotStart.toIso8601String())
+              .limit(1);
+
+          if (existing.isNotEmpty) {
+            _passCtrl.clear();
+            if (mounted) _showLockDialog();
+          } else {
+            _goToHome(name, fCode, false);
+          }
+        } else {
+          _passCtrl.clear();
+          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("INVALID PIN")));
+        }
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+      } finally {
+        if (mounted) setState(() => _isLoading = false);
       }
-    } catch (_) {}
+    }
+  }
+
+  void _goToHome(String n, String f, bool m) {
+    Navigator.pushReplacement(context, MaterialPageRoute(builder: (c) => HomePage(guardName: n, factoryCode: f, isMaster: m)));
+  }
+
+  void _showLockDialog() {
+    showDialog(context: context, builder: (c) => AlertDialog(
+      title: const Icon(Icons.lock, color: Colors.red, size: 50),
+      content: const Text("THIS LOT IS COMPLETED\nPlease wait for the next patrol window.", textAlign: TextAlign.center),
+      actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text("OK"))],
+    ));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("GUARD ROUNDS")),
-      floatingActionButton: FloatingActionButton(onPressed: _triggerSos, backgroundColor: Colors.red, child: const Icon(Icons.warning, color: Colors.white)),
-      body: Column(children: [
-        Screenshot(
-          controller: screenshotController,
-          child: Container(
-            height: 300, margin: const EdgeInsets.all(20),
-            decoration: BoxDecoration(border: Border.all(color: Colors.blueAccent), borderRadius: BorderRadius.circular(20)),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(20),
-              child: Stack(children: [
-                MobileScanner(controller: ctrl, onDetect: _onDetect),
-                if (_wait > 0) Container(color: Colors.black54, child: Center(child: Text("$_wait", style: const TextStyle(fontSize: 100, color: Colors.orange, fontWeight: FontWeight.bold)))),
-              ]),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Image.asset('assets/logo.png', height: 130, errorBuilder: (c,e,s) => const Icon(Icons.security, size: 80)),
+            const SizedBox(height: 20),
+            const Text("VERIPATROL", style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 40),
+            if (_isLoading) const CircularProgressIndicator()
+            else SizedBox(
+              width: 180,
+              child: TextField(
+                controller: _passCtrl,
+                obscureText: true,
+                textAlign: TextAlign.center,
+                keyboardType: TextInputType.number,
+                maxLength: 4,
+                style: const TextStyle(fontSize: 28, letterSpacing: 10),
+                decoration: InputDecoration(hintText: "PIN", counterText: "", border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                onChanged: _handlePinEntry,
+              ),
             ),
-          ),
+          ],
         ),
-        Expanded(child: ListView(children: _status.keys.map((k) => ListTile(
-          leading: Icon(_status[k] == "COMPLETED" ? Icons.check_circle : Icons.radio_button_unchecked, color: _status[k] == "COMPLETED" ? Colors.green : Colors.grey),
-          title: Text("POINT: ${k.toUpperCase()}"),
-          subtitle: Text("STATUS: ${_status[k]}"),
-        )).toList())),
-      ]),
+      ),
     );
   }
 }
