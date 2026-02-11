@@ -4,17 +4,17 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
-val flutterVersionCode = flutter.versionCode
-val flutterVersionName = flutter.versionName
-
 android {
+    // Standard namespace for your package
     namespace = "com.veripatrol.veripatrol"
+    
+    // Using modern Flutter defaults (API 34 or 35+)
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
-        // ENABLE DESUGARING HERE
-        isCoreLibraryDesugaringEnabled = true 
+        // Required for using Java 8+ features on older devices
+        isCoreLibraryDesugaringEnabled = true
         
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -27,26 +27,32 @@ android {
     defaultConfig {
         applicationId = "com.veripatrol.veripatrol"
         
-        // Ensure minSdk is at least 21 for multidex/notifications
-        minSdk = flutter.minSdkVersion 
+        // Bumping to 24 as required by Flutter 3.35+ and modern plugins
+        minSdk = 24 
         targetSdk = flutter.targetSdkVersion
         
-        versionCode = flutterVersionCode
-        versionName = flutterVersionName
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
         
+        // Necessary if your app grows large
         multiDexEnabled = true
     }
 
     buildTypes {
         release {
+            // Replace with your actual release signing config when ready
             signingConfig = signingConfigs.getByName("debug")
+            
+            // Recommended: enable shrinking for smaller APKs
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
     }
 }
 
-// ADD THIS SECTION AT THE BOTTOM
 dependencies {
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.3")
+    // Specifically version 2.0.3+ for modern Java feature support
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 }
 
 flutter {

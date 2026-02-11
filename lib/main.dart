@@ -3,189 +3,653 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
+import 'package:connectivity_plus/connectivity_plus.dart';
+
 import 'home_page.dart';
 
-final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
+final FlutterLocalNotificationsPlugin
+    flutterLocalNotificationsPlugin =
+    FlutterLocalNotificationsPlugin();
 
-void main() async {
+
+// ===================== MAIN =======================
+
+Future<void> main() async {
+
   WidgetsFlutterBinding.ensureInitialized();
+
   tz.initializeTimeZones();
+
 
   await Supabase.initialize(
     url: 'https://iztwxujppgavovmbgkrm.supabase.co',
-    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml6dHd4dWpwcGdhdm92bWJna3JtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg0MTY4ODMsImV4cCI6MjA4Mzk5Mjg4M30.EXtWPyOb7NXoP9s1lXorv_jxfVmB8SWUlb8MgMmLtT0',
+    anonKey:
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml6dHd4dWpwcGdhdm92bWJna3JtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg0MTY4ODMsImV4cCI6MjA4Mzk5Mjg4M30.EXtWPyOb7NXoP9s1lXorv_jxfVmB8SWUlb8MgMmLtT0',
   );
 
-  // Initialize Notifications
-  const AndroidInitializationSettings initializationSettingsAndroid = AndroidInitializationSettings('@mipmap/ic_launcher');
-  await flutterLocalNotificationsPlugin.initialize(const InitializationSettings(android: initializationSettingsAndroid));
 
-  // Create Notification Channel for Android 8+
-  final AndroidFlutterLocalNotificationsPlugin? androidImplementation =
-      flutterLocalNotificationsPlugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+  const AndroidInitializationSettings androidInit =
+      AndroidInitializationSettings('@mipmap/ic_launcher');
 
-  await androidImplementation?.createNotificationChannel(const AndroidNotificationChannel(
-    'patrol_channel_id', 
-    'Patrol Alerts',
-    importance: Importance.max,
-    sound: RawResourceAndroidNotificationSound('alert'),
-  ));
+  await flutterLocalNotificationsPlugin.initialize(
+    const InitializationSettings(android: androidInit),
+  );
+
+
+  final android =
+      flutterLocalNotificationsPlugin
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>();
+
+
+  await android?.createNotificationChannel(
+
+    const AndroidNotificationChannel(
+      'patrol_channel_id',
+      'Patrol Alerts',
+
+      importance: Importance.max,
+
+      playSound: true,
+
+      sound: RawResourceAndroidNotificationSound('alert'),
+
+      enableVibration: true,
+    ),
+  );
+
 
   runApp(const VeriPatrolApp());
 }
 
+
+
+// ===================== APP =======================
+
 class VeriPatrolApp extends StatelessWidget {
+
   const VeriPatrolApp({super.key});
+
   @override
   Widget build(BuildContext context) {
+
     return MaterialApp(
+
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(primarySwatch: Colors.blue, useMaterial3: true),
-      home: const LoginScreen(),
+
+      title: 'VeriPatrol',
+
+      theme: ThemeData(
+        useMaterial3: true,
+        primaryColor: const Color(0xFF005C97),
+      ),
+
+      initialRoute: '/',
+
+      routes: {
+
+        '/': (_) => const LoginScreen(),
+
+        '/home': (context) {
+
+          final args =
+              ModalRoute.of(context)?.settings.arguments
+                  as Map<String, dynamic>?;
+
+          return HomePage(
+
+            guardName: args?['guardName'] ?? '',
+
+            factoryCode: args?['factoryCode'] ?? '',
+
+            isMaster: args?['isMaster'] ?? false,
+
+            canScan: args?['canScan'] ?? false,
+          );
+        },
+      },
     );
   }
 }
 
+
+
+// ===================== LOGIN =======================
+
 class LoginScreen extends StatefulWidget {
+
   const LoginScreen({super.key});
+
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  State<LoginScreen> createState() =>
+      _LoginScreenState();
 }
 
+
+
 class _LoginScreenState extends State<LoginScreen> {
-  final _passCtrl = TextEditingController();
-  bool _isLoading = false;
+
+
+  final _pinCtrl = TextEditingController();
+
+  bool _loading = false;
+
 
   @override
   void initState() {
+
     super.initState();
-    _scheduleBackgroundAlarms();
+
+    Future.delayed(const Duration(milliseconds: 500), () {
+
+      _scheduleNotifications();
+    });
   }
 
-  // LOGIC: Determine current "Lot" based on 5-min early rule and fixed 9PM slots
-  DateTime _getCurrentLotStart() {
-    final now = DateTime.now();
-    final h = now.hour;
-    final m = now.minute;
 
-    // 1. Fixed Special Lot: 9:31 PM to 9:50 PM
-    if (h == 21 && m >= 31 && m <= 54) {
-      return DateTime(now.year, now.month, now.day, 21, 31);
-    }
-    
-    // 2. Fixed Special Lot: 9:00 PM to 9:30 PM (Starts at 8:55 PM)
-    if ((h == 20 && m >= 55) || (h == 21 && m <= 30)) {
-      return DateTime(now.year, now.month, now.day, 21, 0);
-    }
+  @override
+  void dispose() {
 
-    // 3. Night Lots: 10 PM - 6 AM (30-min intervals with 5-min buffer)
-    if (h >= 22 || h < 6) {
-      int effectiveMinute = m + 5; 
-      int startMin = (effectiveMinute < 30) ? 0 : (effectiveMinute < 60 ? 30 : 0);
-      int effectiveHour = (effectiveMinute >= 60) ? h + 1 : h;
-      return DateTime(now.year, now.month, now.day, effectiveHour, startMin);
-    } 
+    _pinCtrl.dispose();
 
-    // 4. Day Lots: 6 AM - 8:59 PM (1-hour intervals with 5-min buffer)
-    int effectiveHourDay = (m >= 55) ? h + 1 : h;
-    return DateTime(now.year, now.month, now.day, effectiveHourDay, 0);
+    super.dispose();
   }
 
-  Future<void> _scheduleBackgroundAlarms() async {
+
+
+// ================= INTERNET ==================
+
+  Future<bool> _isOnline() async {
+
+    final result =
+        await Connectivity().checkConnectivity();
+
+    return !result.contains(
+        ConnectivityResult.none);
+  }
+
+
+
+// ================= TIME ==================
+
+  DateTime _getNextRound(DateTime dt) {
+
+    if (dt.minute <= 30) {
+
+      return DateTime(
+          dt.year, dt.month, dt.day,
+          dt.hour, 30);
+
+    } else {
+
+      return DateTime(
+          dt.year, dt.month, dt.day,
+          dt.hour + 1, 0);
+    }
+  }
+
+
+
+// ================= NOTIFICATION ==================
+
+  Future<void> _scheduleNotifications() async {
+
     await flutterLocalNotificationsPlugin.cancelAll();
-    final now = tz.TZDateTime.now(tz.local);
-    
-    // Schedule for the next 5 hours (5 mins before each hour/half-hour)
-    for (int i = 1; i <= 5; i++) {
-      final scheduledTime = now.add(Duration(hours: i)).subtract(const Duration(minutes: 5));
+
+    final now =
+        tz.TZDateTime.now(tz.local);
+
+
+    for (int i = 1; i <= 24; i++) {
+
+      final future = now.add(Duration(hours: i));
+
+      final round =
+          _getNextRound(DateTime(
+        future.year,
+        future.month,
+        future.day,
+        future.hour,
+        future.minute,
+      ));
+
+      final time =
+          tz.TZDateTime(
+        tz.local,
+        round.year,
+        round.month,
+        round.day,
+        round.hour,
+        round.minute,
+      ).subtract(
+          const Duration(minutes: 5));
+
+
+      if (time.isBefore(now)) continue;
+
+
       await flutterLocalNotificationsPlugin.zonedSchedule(
-        i, 'PATROL ALERT', 'Patrol starts in 5 minutes!', scheduledTime,
-        const NotificationDetails(android: AndroidNotificationDetails('patrol_channel_id', 'Patrol Alerts', sound: RawResourceAndroidNotificationSound('alert'))),
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-        uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+
+        i,
+
+        "PATROL ALERT",
+
+        "⏰ Patrol starts in 5 minutes!",
+
+        time,
+
+        const NotificationDetails(
+
+          android: AndroidNotificationDetails(
+
+            'patrol_channel_id',
+
+            'Patrol Alerts',
+
+            importance: Importance.max,
+
+            priority: Priority.high,
+
+            playSound: true,
+
+            sound:
+                RawResourceAndroidNotificationSound(
+                    'alert'),
+
+            enableVibration: true,
+
+            fullScreenIntent: true,
+          ),
+        ),
+
+        androidScheduleMode:
+            AndroidScheduleMode.exactAllowWhileIdle,
+
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation
+                .absoluteTime,
       );
     }
   }
 
-  Future<void> _handlePinEntry(String value) async {
-    if (value.length == 4) {
-      setState(() => _isLoading = true);
-      final client = Supabase.instance.client;
-      try {
-        final userData = await client.from('security_users').select('security_name, factory').eq('security_password', value).maybeSingle();
 
-        if (userData != null) {
-          String name = userData['security_name'];
-          String fCode = userData['factory'];
-          
-          if (name.toUpperCase() == "MASTER") {
-            _goToHome(name, fCode, true);
-            return;
-          }
 
-          // Check if this LOT is already done
-          final lotStart = _getCurrentLotStart();
-          final existing = await client.from('scanning_details').select('id')
-              .eq('factory_code', fCode)
-              .gte('scan_time', lotStart.toIso8601String())
-              .limit(1);
+// ================= LOGIN ==================
 
-          if (existing.isNotEmpty) {
-            _passCtrl.clear();
-            if (mounted) _showLockDialog();
-          } else {
-            _goToHome(name, fCode, false);
-          }
-        } else {
-          _passCtrl.clear();
-          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("INVALID PIN")));
-        }
-      } catch (e) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
-      } finally {
-        if (mounted) setState(() => _isLoading = false);
+  Future<void> _login(String pin) async {
+
+    if (pin.length != 4) return;
+
+
+    if (!await _isOnline()) {
+
+      _pinCtrl.clear();
+
+      _showMsg("No Internet");
+
+      return;
+    }
+
+
+    setState(() => _loading = true);
+
+    final db = Supabase.instance.client;
+
+
+    try {
+
+      final admin =
+          await db.from('login_info')
+              .select('name,role')
+              .eq('user_pin', pin)
+              .eq('is_active', true)
+              .maybeSingle();
+
+
+      if (admin != null) {
+
+        _goHome(
+          admin['name'],
+          'ADMIN',
+          true,
+          true,
+        );
+
+        return;
       }
+
+
+      final guard =
+          await db.from('security_users')
+              .select('security_name,factory')
+              .eq('security_password', pin)
+              .maybeSingle();
+
+
+      if (guard != null) {
+
+        _goHome(
+          guard['security_name'],
+          guard['factory'],
+          false,
+          true,
+        );
+
+        return;
+      }
+
+
+      _pinCtrl.clear();
+
+      _showMsg("INVALID PIN");
+
+
+    } catch (e) {
+
+      _showMsg("Server Error");
+
+    } finally {
+
+      if (mounted)
+        setState(() => _loading = false);
     }
   }
 
-  void _goToHome(String n, String f, bool m) {
-    Navigator.pushReplacement(context, MaterialPageRoute(builder: (c) => HomePage(guardName: n, factoryCode: f, isMaster: m)));
+
+
+// ================= UI HELPERS ==================
+
+  void _showMsg(String msg) {
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg)),
+    );
   }
 
-  void _showLockDialog() {
-    showDialog(context: context, builder: (c) => AlertDialog(
-      title: const Icon(Icons.lock, color: Colors.red, size: 50),
-      content: const Text("THIS LOT IS COMPLETED\nPlease wait for the next patrol window.", textAlign: TextAlign.center),
-      actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text("OK"))],
-    ));
+
+
+  void _goHome(
+    String name,
+    String factory,
+    bool isAdmin,
+    bool canScan,
+  ) {
+
+    Navigator.pushReplacementNamed(
+      context,
+      '/home',
+
+      arguments: {
+
+        'guardName': name,
+
+        'factoryCode': factory,
+
+        'isMaster': isAdmin,
+
+        'canScan': canScan,
+      },
+    );
   }
+
+
+
+// ================= UI ==================
 
   @override
   Widget build(BuildContext context) {
+
     return Scaffold(
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Image.asset('assets/logo.png', height: 130, errorBuilder: (c,e,s) => const Icon(Icons.security, size: 80)),
-            const SizedBox(height: 20),
-            const Text("VERIPATROL", style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 40),
-            if (_isLoading) const CircularProgressIndicator()
-            else SizedBox(
-              width: 180,
-              child: TextField(
-                controller: _passCtrl,
-                obscureText: true,
-                textAlign: TextAlign.center,
-                keyboardType: TextInputType.number,
-                maxLength: 4,
-                style: const TextStyle(fontSize: 28, letterSpacing: 10),
-                decoration: InputDecoration(hintText: "PIN", counterText: "", border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
-                onChanged: _handlePinEntry,
-              ),
+
+      body: Container(
+
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color(0xFF005C97),
+              Color(0xFF363795),
+            ],
+          ),
+        ),
+
+        child: Center(
+
+          child: SingleChildScrollView(
+
+            padding: const EdgeInsets.all(20),
+
+            child: Column(
+
+              mainAxisAlignment:
+                  MainAxisAlignment.center,
+
+              children: [
+
+                // LOGO
+                Container(
+                  height: 120,
+                  width: 120,
+
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Colors.black26,
+                        blurRadius: 10,
+                        offset: Offset(0, 5),
+                      ),
+                    ],
+                  ),
+
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+
+                    child: Image.asset(
+                      "assets/logo.png",
+
+                      fit: BoxFit.contain,
+
+                      errorBuilder: (c, e, s) =>
+                          const Icon(
+                        Icons.security,
+                        size: 70,
+                        color: Color(0xFF005C97),
+                      ),
+                    ),
+                  ),
+                ),
+
+
+                const SizedBox(height: 20),
+
+
+                const Text(
+                  "VeriPatrol",
+
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+
+
+                const SizedBox(height: 6),
+
+
+                const Text(
+                  "Security Monitoring System",
+
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.white70,
+                  ),
+                ),
+
+
+                const SizedBox(height: 40),
+
+
+                // LOGIN CARD
+                Container(
+                  width: double.infinity,
+
+                  padding: const EdgeInsets.all(24),
+
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Colors.black26,
+                        blurRadius: 12,
+                        offset: Offset(0, 6),
+                      ),
+                    ],
+                  ),
+
+                  child: Column(
+                    children: [
+
+                      const Text(
+                        "LOGIN",
+
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF005C97),
+                        ),
+                      ),
+
+
+                      const SizedBox(height: 20),
+
+
+                      // PIN FIELD
+                      TextField(
+
+                        controller: _pinCtrl,
+
+                        keyboardType: TextInputType.number,
+
+                        maxLength: 4,
+
+                        obscureText: true,
+
+                        textAlign: TextAlign.center,
+
+                        style: const TextStyle(
+                          fontSize: 24,
+                          letterSpacing: 8,
+                          fontWeight: FontWeight.bold,
+                        ),
+
+                        onChanged: _login,
+
+                        decoration: InputDecoration(
+
+                          hintText: "••••",
+
+                          counterText: "",
+
+                          filled: true,
+
+                          fillColor: Colors.grey[100],
+
+                          prefixIcon: const Icon(
+                            Icons.lock,
+                            color: Color(0xFF005C97),
+                          ),
+
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(
+                              color: Color(0xFF005C97),
+                              width: 2,
+                            ),
+                          ),
+                        ),
+                      ),
+
+
+                      const SizedBox(height: 20),
+
+
+                      // LOGIN BUTTON
+                      SizedBox(
+                        width: double.infinity,
+
+                        child: ElevatedButton(
+
+                          onPressed: () =>
+                              _login(_pinCtrl.text),
+
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor:
+                                const Color(0xFF005C97),
+
+                            foregroundColor: Colors.white,
+
+                            padding:
+                                const EdgeInsets.symmetric(
+                                    vertical: 14),
+
+                            shape: RoundedRectangleBorder(
+                              borderRadius:
+                                  BorderRadius.circular(12),
+                            ),
+                          ),
+
+                          child: _loading
+                              ? const SizedBox(
+                                  height: 22,
+                                  width: 22,
+
+                                  child:
+                                      CircularProgressIndicator(
+                                    color: Colors.white,
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Text(
+                                  "LOGIN",
+
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 1,
+                                  ),
+                                ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+
+                const SizedBox(height: 30),
+
+
+                const Text(
+                  "Powered by Godvel",
+
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.white60,
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
