@@ -140,7 +140,7 @@ class _ScanningPageState extends State<ScanningPage> {
           .from('scanning_details')
           .select('qr_id,status')
           .eq('factory_code', widget.factoryCode)
-          .eq('round_slot', _currentRound.toIso8601String());
+          .eq('round_slot', _currentRound.toUtc().toIso8601String());
 
       final Set<String> success = {};
 
@@ -188,7 +188,7 @@ class _ScanningPageState extends State<ScanningPage> {
         .select('id')
         .eq('factory_code', widget.factoryCode)
         .eq('qr_id', qr)
-        .eq('round_slot', _currentRound.toIso8601String())
+        .eq('round_slot', _currentRound.toUtc().toIso8601String())
         .eq('status', 'SUCCESS')
         .maybeSingle();
 
@@ -431,8 +431,8 @@ class _ScanningPageState extends State<ScanningPage> {
         'lat': pos.latitude,
         'log': pos.longitude,
         'factory_code': widget.factoryCode,
-        'scan_time': DateTime.now().toIso8601String(),
-        'round_slot': _currentRound.toIso8601String(),
+        'scan_time': DateTime.now().toUtc().toIso8601String(),
+        'round_slot': _currentRound.toUtc().toIso8601String(),
         'status': 'SUCCESS',
       });
 
@@ -486,8 +486,8 @@ class _ScanningPageState extends State<ScanningPage> {
         'lat': pos.latitude,
         'log': pos.longitude,
         'factory_code': widget.factoryCode,
-        'scan_time': DateTime.now().toIso8601String(),
-        'round_slot': _currentRound.toIso8601String(),
+        'scan_time': DateTime.now().toUtc().toIso8601String(),
+        'round_slot': _currentRound.toUtc().toIso8601String(),
         'status': 'MISSED',
       });
 

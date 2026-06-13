@@ -197,7 +197,7 @@ class _HomePageState extends State<HomePage> {
           .from('scanning_details')
           .select('qr_id, status')
           .eq('factory_code', _selectedFactoryCode)
-          .eq('round_slot', roundStart.toIso8601String());
+          .eq('round_slot', roundStart.toUtc().toIso8601String());
 
       final uniqueScans = <String>{};
       for (var scan in scannedRes) {
@@ -319,7 +319,7 @@ class _HomePageState extends State<HomePage> {
                 .from('scanning_details')
                 .select('qr_id, status, guard_name')
                 .eq('factory_code', _selectedFactoryCode)
-                .eq('round_slot', slotTime.toIso8601String());
+                .eq('round_slot', slotTime.toUtc().toIso8601String());
 
             final seenQrIds = <String>{};
             for (var scan in scannedData) {
@@ -386,7 +386,7 @@ class _HomePageState extends State<HomePage> {
           .from('scanning_details')
           .select('qr_id, qr_name, guard_name, scan_time, status')
           .eq('factory_code', _selectedFactoryCode)
-          .eq('round_slot', slotTime.toIso8601String());
+          .eq('round_slot', slotTime.toUtc().toIso8601String());
       Map<String, dynamic> scannedQrMap = {};
       for (var scan in scanDetails) {
         scannedQrMap[scan['qr_id'].toString()] = scan;
