@@ -181,14 +181,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
     for (int i = 0; i < rounds.length && i < 24; i++) {
       final windowStart = getScanWindowStart(rounds[i].time);
-      final time = tz.TZDateTime(
-        tz.local,
-        windowStart.year,
-        windowStart.month,
-        windowStart.day,
-        windowStart.hour,
-        windowStart.minute,
-      ).subtract(const Duration(minutes: 5));
+      final timeUtc = windowStart.toUtc().subtract(const Duration(minutes: 5));
+      final time = tz.TZDateTime.from(timeUtc, tz.local);
 
       if (time.isBefore(now)) continue;
 
