@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:async';
+import 'round_utils.dart';
 import 'scan_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -53,9 +54,31 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _fetchInitialData() async {
-    await _fetchFactories();
-    await _fetchFactoryName();
-    await _refreshPatrolStatus();
+    try {
+      await Future.wait([
+        _fetchFactories().timeout(
+          const Duration(seconds: 10),
+          onTimeout: () {
+            debugPrint('Factories fetch timeout');
+          },
+        ),
+        _fetchFactoryName().timeout(
+          const Duration(seconds: 10),
+          onTimeout: () {
+            debugPrint('Factory name fetch timeout');
+          },
+        ),
+        _refreshPatrolStatus().timeout(
+          const Duration(seconds: 10),
+          onTimeout: () {
+            debugPrint('Patrol status fetch timeout');
+          },
+        ),
+      ], eagerError: false);
+    } catch (e) {
+      debugPrint('Initial data fetch error: $e');
+    }
+    
     _updateRoundInfo();
     Timer.periodic(const Duration(minutes: 1), (timer) {
       if (mounted) _updateRoundInfo();
@@ -102,143 +125,34 @@ class _HomePageState extends State<HomePage> {
   }
 
   Map<String, dynamic> _getCurrentRoundSlot() {
-    final now = DateTime.now();
-
-    final List<Map<String, dynamic>> roundSlots = [
-      {'hour': 0, 'minute': 0, 'round': 1, 'label': '12:00 AM'},
-      {'hour': 0, 'minute': 30, 'round': 2, 'label': '12:30 AM'},
-      {'hour': 1, 'minute': 0, 'round': 3, 'label': '1:00 AM'},
-      {'hour': 1, 'minute': 30, 'round': 4, 'label': '1:30 AM'},
-      {'hour': 2, 'minute': 0, 'round': 5, 'label': '2:00 AM'},
-      {'hour': 2, 'minute': 30, 'round': 6, 'label': '2:30 AM'},
-      {'hour': 3, 'minute': 0, 'round': 7, 'label': '3:00 AM'},
-      {'hour': 3, 'minute': 30, 'round': 8, 'label': '3:30 AM'},
-      {'hour': 4, 'minute': 0, 'round': 9, 'label': '4:00 AM'},
-      {'hour': 4, 'minute': 30, 'round': 10, 'label': '4:30 AM'},
-      {'hour': 5, 'minute': 0, 'round': 11, 'label': '5:00 AM'},
-      {'hour': 5, 'minute': 30, 'round': 12, 'label': '5:30 AM'},
-      {'hour': 6, 'minute': 0, 'round': 13, 'label': '6:00 AM'},
-      {'hour': 7, 'minute': 0, 'round': 14, 'label': '7:00 AM'},
-      {'hour': 8, 'minute': 0, 'round': 15, 'label': '8:00 AM'},
-      {'hour': 9, 'minute': 0, 'round': 16, 'label': '9:00 AM'},
-      {'hour': 10, 'minute': 0, 'round': 17, 'label': '10:00 AM'},
-      {'hour': 11, 'minute': 0, 'round': 18, 'label': '11:00 AM'},
-      {'hour': 12, 'minute': 0, 'round': 19, 'label': '12:00 PM'},
-      {'hour': 13, 'minute': 0, 'round': 20, 'label': '1:00 PM'},
-      {'hour': 14, 'minute': 0, 'round': 21, 'label': '2:00 PM'},
-      {'hour': 15, 'minute': 0, 'round': 22, 'label': '3:00 PM'},
-      {'hour': 16, 'minute': 0, 'round': 23, 'label': '4:00 PM'},
-      {'hour': 17, 'minute': 0, 'round': 24, 'label': '5:00 PM'},
-      {'hour': 18, 'minute': 0, 'round': 25, 'label': '6:00 PM'},
-      {'hour': 19, 'minute': 0, 'round': 26, 'label': '7:00 PM'},
-      {'hour': 20, 'minute': 0, 'round': 27, 'label': '8:00 PM'},
-      {'hour': 21, 'minute': 0, 'round': 28, 'label': '9:00 PM'},
-      {'hour': 21, 'minute': 30, 'round': 29, 'label': '9:30 PM'},
-      {'hour': 22, 'minute': 0, 'round': 30, 'label': '10:00 PM'},
-      {'hour': 22, 'minute': 30, 'round': 31, 'label': '10:30 PM'},
-      {'hour': 23, 'minute': 0, 'round': 32, 'label': '11:00 PM'},
-      {'hour': 23, 'minute': 30, 'round': 33, 'label': '11:30 PM'},
-    ];
-
-    final cycleDate = (now.hour < 6) ? now.subtract(const Duration(days: 1)) : now;
-    final patrolDay = DateTime(cycleDate.year, cycleDate.month, cycleDate.day);
-
-    List<Map<String, dynamic>> timeline = [];
-    for (var slot in roundSlots) {
-      timeline.add({
-        'slot': slot,
-        'time': DateTime(patrolDay.year, patrolDay.month, patrolDay.day, slot['hour'], slot['minute'])
-      });
-    }
-
-    // *** DEBUG: Print current time for debugging ***
-    debugPrint("Current time: ${DateFormat('hh:mm a').format(now)}");
-
-    // *** REVISED LOGIC: More robust round detection ***
-    Map<String, dynamic> current = timeline.first;
-    int index = 0;
-    bool foundActiveRound = false;
-    
-    // First, try to find a round whose scan window is currently active
-    for (int i = 0; i < timeline.length; i++) {
-      final roundTime = timeline[i]['time'] as DateTime;
-      final scanWindowStart = roundTime;
-      final scanWindowEnd = roundTime.add(const Duration(minutes: 25));
-      
-      // *** DEBUG: Print each round's window ***
-      debugPrint("Round ${roundSlots[i]['round']}: ${DateFormat('hh:mm a').format(scanWindowStart)} to ${DateFormat('hh:mm a').format(scanWindowEnd)}");
-      
-      if (now.isAfter(scanWindowStart.subtract(const Duration(seconds: 1))) && 
-          now.isBefore(scanWindowEnd.add(const Duration(seconds: 1)))) {
-        current = timeline[i];
-        index = i;
-        foundActiveRound = true;
-        debugPrint("Found active round: ${roundSlots[i]['round']}");
-        break;
-      }
-    }
-    
-    // If no active scan window found, find the most recent round
-    if (!foundActiveRound) {
-      debugPrint("No active round found, finding most recent");
-      for (int i = 0; i < timeline.length; i++) {
-        final roundTime = timeline[i]['time'] as DateTime;
-        if (!now.isBefore(roundTime)) {
-          current = timeline[i];
-          index = i;
-        }
-      }
-    }
-
-    Map<String, dynamic> next =
-        index < timeline.length - 1 ? timeline[index + 1] : timeline.first;
-
-    return {
-      'current': current['slot'],
-      'next': next['slot'],
-      'currentRoundTime': current['time'],
-      'nextRoundTime': next['time'],
-    };
+    return getCurrentPatrolRound(DateTime.now());
   }
 
   void _updateRoundInfo() {
     final roundInfo = _getCurrentRoundSlot();
-    final currentSlot = roundInfo['current'] as Map<String, dynamic>;
-    final nextSlot = roundInfo['next'] as Map<String, dynamic>;
+    final currentSlot = roundInfo['current'] as PatrolRound;
+    final nextSlot = roundInfo['next'] as PatrolRound;
     final roundTime = roundInfo['currentRoundTime'] as DateTime;
-    
-    // Calculate scan window times
-    final windowOpen = roundTime;
-    final windowClose = roundTime.add(const Duration(minutes: 25));
-    
-    // *** DEBUG: Print window info ***
-    debugPrint("Scan window: ${DateFormat('hh:mm a').format(windowOpen)} to ${DateFormat('hh:mm a').format(windowClose)}");
-    
+
     if (mounted) {
       setState(() {
-        _currentRound = "Round ${currentSlot['round']}";
-        _nextRoundTime = "Next: ${nextSlot['label']}";
+        _currentRound = "Round ${currentSlot.round}";
+        _nextRoundTime = "Next: ${nextSlot.label}";
         _currentRoundStart = roundTime;
-        _scanWindowOpen = windowOpen;
-        _scanWindowClose = windowClose;
+        _scanWindowOpen = roundInfo['scanWindowOpen'] as DateTime;
+        _scanWindowClose = roundInfo['scanWindowClose'] as DateTime;
       });
     }
   }
 
   bool _isWithinScanWindow() {
     final now = DateTime.now();
-    
+
     if (_currentRoundStart == null || _scanWindowOpen == null || _scanWindowClose == null) {
-      debugPrint("Scan window not set");
       return false;
     }
-    
-    bool isWithin = now.isAfter(_scanWindowOpen!) && now.isBefore(_scanWindowClose!);
-    debugPrint("Is within scan window: $isWithin");
-    debugPrint("Current: ${DateFormat('hh:mm:ss a').format(now)}");
-    debugPrint("Window: ${DateFormat('hh:mm:ss a').format(_scanWindowOpen!)} to ${DateFormat('hh:mm:ss a').format(_scanWindowClose!)}");
-    
-    return isWithin;
+
+    return !now.isBefore(_scanWindowOpen!) && now.isBefore(_scanWindowClose!);
   }
 
   bool _isSuccessStatus(String? status) {
@@ -268,8 +182,7 @@ class _HomePageState extends State<HomePage> {
     final now = DateTime.now();
     final roundInfo = _getCurrentRoundSlot();
     final roundStart = roundInfo['currentRoundTime'] as DateTime;
-
-    final roundEnd = roundStart.add(const Duration(minutes: 25));
+    final roundEnd = roundInfo['scanWindowClose'] as DateTime;
     bool isScanWindowClosed = now.isAfter(roundEnd);
     
     try {
@@ -370,82 +283,13 @@ class _HomePageState extends State<HomePage> {
     setState(() => _isLoadingStatus = true);
     try {
       final now = DateTime.now();
-      final cycleDate = (now.hour < 6) ? now.subtract(const Duration(days: 1)) : now;
-      final reportDate = DateTime(cycleDate.year, cycleDate.month, cycleDate.day);
       final client = Supabase.instance.client;
       List<Map<String, dynamic>> slots = [];
-      final List<Map<String, dynamic>> roundSlots = [
-        {'hour': 0, 'minute': 0, 'round': 1, 'label': '12:00 AM'},
-        {'hour': 0, 'minute': 30, 'round': 2, 'label': '12:30 AM'},
-        {'hour': 1, 'minute': 0, 'round': 3, 'label': '1:00 AM'},
-        {'hour': 1, 'minute': 30, 'round': 4, 'label': '1:30 AM'},
-        {'hour': 2, 'minute': 0, 'round': 5, 'label': '2:00 AM'},
-        {'hour': 2, 'minute': 30, 'round': 6, 'label': '2:30 AM'},
-        {'hour': 3, 'minute': 0, 'round': 7, 'label': '3:00 AM'},
-        {'hour': 3, 'minute': 30, 'round': 8, 'label': '3:30 AM'},
-        {'hour': 4, 'minute': 0, 'round': 9, 'label': '4:00 AM'},
-        {'hour': 4, 'minute': 30, 'round': 10, 'label': '4:30 AM'},
-        {'hour': 5, 'minute': 0, 'round': 11, 'label': '5:00 AM'},
-        {'hour': 5, 'minute': 30, 'round': 12, 'label': '5:30 AM'},
-        {'hour': 6, 'minute': 0, 'round': 13, 'label': '6:00 AM'},
-        {'hour': 7, 'minute': 0, 'round': 14, 'label': '7:00 AM'},
-        {'hour': 8, 'minute': 0, 'round': 15, 'label': '8:00 AM'},
-        {'hour': 9, 'minute': 0, 'round': 16, 'label': '9:00 AM'},
-        {'hour': 10, 'minute': 0, 'round': 17, 'label': '10:00 AM'},
-        {'hour': 11, 'minute': 0, 'round': 18, 'label': '11:00 AM'},
-        {'hour': 12, 'minute': 0, 'round': 19, 'label': '12:00 PM'},
-        {'hour': 13, 'minute': 0, 'round': 20, 'label': '1:00 PM'},
-        {'hour': 14, 'minute': 0, 'round': 21, 'label': '2:00 PM'},
-        {'hour': 15, 'minute': 0, 'round': 22, 'label': '3:00 PM'},
-        {'hour': 16, 'minute': 0, 'round': 23, 'label': '4:00 PM'},
-        {'hour': 17, 'minute': 0, 'round': 24, 'label': '5:00 PM'},
-        {'hour': 18, 'minute': 0, 'round': 25, 'label': '6:00 PM'},
-        {'hour': 19, 'minute': 0, 'round': 26, 'label': '7:00 PM'},
-        {'hour': 20, 'minute': 0, 'round': 27, 'label': '8:00 PM'},
-        {'hour': 21, 'minute': 0, 'round': 28, 'label': '9:00 PM'},
-        {'hour': 21, 'minute': 30, 'round': 29, 'label': '9:30 PM'},
-        {'hour': 22, 'minute': 0, 'round': 30, 'label': '10:00 PM'},
-        {'hour': 22, 'minute': 30, 'round': 31, 'label': '10:30 PM'},
-        {'hour': 23, 'minute': 0, 'round': 32, 'label': '11:00 PM'},
-        {'hour': 23, 'minute': 30, 'round': 33, 'label': '11:30 PM'},
-      ];
+      final rounds = buildPatrolRounds(now);
+      final currentInfo = getCurrentPatrolRound(now);
+      final currentRound = currentInfo['current'] as PatrolRound;
+      final currentIndex = rounds.indexWhere((round) => round.time == currentRound.time);
 
-      List<Map<String, dynamic>> timeline = [];
-      for (var slot in roundSlots) {
-        timeline.add({
-          'slot': slot,
-          'time': DateTime(reportDate.year, reportDate.month, reportDate.day, slot['hour'], slot['minute'])
-        });
-      }
-
-      int currentRoundIndex = 0;
-      bool foundActiveRound = false;
-      
-      // First, try to find a round whose scan window is currently active
-      for (int i = 0; i < timeline.length; i++) {
-        final roundTime = timeline[i]['time'] as DateTime;
-        final scanWindowStart = roundTime;
-        final scanWindowEnd = roundTime.add(const Duration(minutes: 25));
-        
-        if (now.isAfter(scanWindowStart.subtract(const Duration(seconds: 1))) && 
-            now.isBefore(scanWindowEnd.add(const Duration(seconds: 1)))) {
-          currentRoundIndex = i;
-          foundActiveRound = true;
-          break;
-        }
-      }
-      
-      // If no active scan window found, find the most recent round
-      if (!foundActiveRound) {
-        for (int i = 0; i < timeline.length; i++) {
-          final roundTime = timeline[i]['time'] as DateTime;
-          if (!now.isBefore(roundTime)) {
-            currentRoundIndex = i;
-          }
-        }
-      }
-
-      // *** CRITICAL: Fetch QR data specific to this factory ***
       final qrData = await client
           .from('qr')
           .select('qr_id')
@@ -454,51 +298,51 @@ class _HomePageState extends State<HomePage> {
       int totalQrCount = qrData.length;
 
       if (totalQrCount == 0) {
-        for (var slot in timeline) {
+        for (var round in rounds) {
           slots.add({
-            'time': slot['time'],
-            'label': slot['slot']['label'],
-            'round': 'Round ${slot['slot']['round']}',
+            'time': round.time,
+            'label': round.label,
+            'round': 'Round ${round.round}',
             'status': 'no_qr'
           });
         }
       } else {
-        for (int i = 0; i < timeline.length; i++) {
-          final slot = timeline[i];
-          final slotTime = slot['time'] as DateTime;
-          
+        for (var i = 0; i < rounds.length; i++) {
+          final round = rounds[i];
+          final slotTime = round.time;
+
           String status;
           List<dynamic> scannedData = [];
-          
-          if (i < currentRoundIndex) {
+
+          if (i < currentIndex) {
             scannedData = await client
                 .from('scanning_details')
                 .select('qr_id, status, guard_name')
                 .eq('factory_code', _selectedFactoryCode)
                 .eq('round_slot', slotTime.toIso8601String());
-            
-            int successfulScanCount = 0;
+
+            final seenQrIds = <String>{};
             for (var scan in scannedData) {
               if (_isSuccessStatus(scan['status'])) {
-                successfulScanCount++;
+                seenQrIds.add(scan['qr_id'].toString());
               }
             }
             
-            if (successfulScanCount >= totalQrCount) {
+            if (seenQrIds.length >= totalQrCount) {
               status = 'success';
             } else {
               status = 'missed';
             }
-          } else if (i == currentRoundIndex) {
+          } else if (i == currentIndex) {
             status = 'current';
           } else {
             status = 'future';
           }
-          
+
           slots.add({
             'time': slotTime,
-            'label': slot['slot']['label'],
-            'round': 'Round ${slot['slot']['round']}',
+            'label': round.label,
+            'round': 'Round ${round.round}',
             'status': status,
             'guard_name': status == 'success'
                 ? (scannedData.isNotEmpty && scannedData.first['guard_name'] != null)
@@ -577,8 +421,8 @@ class _HomePageState extends State<HomePage> {
                             scanTime = _formatScanTime(scan['scan_time']);
                           } else {
                             final now = DateTime.now();
-                            final scanWindowStart = slotTime;
-                            final scanWindowEnd = slotTime.add(const Duration(minutes: 25));
+                            final scanWindowStart = getScanWindowStart(slotTime);
+                            final scanWindowEnd = getScanWindowEnd(slotTime);
 
                             if (now.isAfter(scanWindowEnd)) {
                               statusText = "Missed";
@@ -959,32 +803,32 @@ class _HomePageState extends State<HomePage> {
                       },
                     ),
                     const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          _currentRound,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF005C97),
-                          ),
-                        ),
-                        Text(
-                          "Now: ${DateFormat('hh:mm a').format(DateTime.now())}",
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: Colors.black54,
-                          ),
-                        ),
-                        Text(
-                          _nextRoundTime,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: Colors.black54,
-                          ),
-                        ),
-                      ],
+                    const SizedBox(height: 12),
+                    Text(
+                      _currentRound,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF005C97),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      _scanWindowOpen != null && _scanWindowClose != null
+                          ? "${DateFormat('hh:mm a').format(_scanWindowOpen!)} - ${DateFormat('hh:mm a').format(_scanWindowClose!)}"
+                          : _nextRoundTime,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Colors.black54,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _nextRoundTime,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Colors.black45,
+                      ),
                     ),
                   ],
                 ),

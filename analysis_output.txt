@@ -1,0 +1,11 @@
+﻿Analyzing security-verifier...
+
+warning - lib\main.dart:176:12 - The declaration '_getNextRound' isn't referenced. Try removing the declaration of '_getNextRound'. - unused_element
+warning - lib\scan_page.dart:377:16 - The declaration '_saveMissed' isn't referenced. Try removing the declaration of '_saveMissed'. - unused_element
+warning - test\widget_test.dart:8:8 - Unused import: 'package:flutter/material.dart'. Try removing the import directive. - unused_import
+   info - lib\home_page.dart:189:52 - Use 'isNotEmpty' instead of 'length' to test whether the collection is empty. Try rewriting the expression to use 'isNotEmpty'. - prefer_is_empty
+   info - lib\main.dart:341:9 - Statements in an if should be enclosed in a block. Try wrapping the statement in a block. - curly_braces_in_flow_control_structures
+   info - lib\scan_page.dart:233:20 - Use 'const' with the constructor to improve performance. Try adding the 'const' keyword to the constructor invocation. - prefer_const_constructors
+   info - lib\scan_page.dart:512:47 - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss. Try replacing the use of the deprecated member with the replacement. - deprecated_member_use
+
+7 issues found.
