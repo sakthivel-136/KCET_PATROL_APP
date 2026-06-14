@@ -183,16 +183,24 @@ class _ScanningPageState extends State<ScanningPage> {
   // ================= DB CHECK =================
 
   Future<bool> _existsSuccess(String qr) async {
-    final res = await Supabase.instance.client
-        .from('scanning_details')
-        .select('id')
-        .eq('factory_code', widget.factoryCode)
-        .eq('qr_id', qr)
-        .eq('round_slot', _currentRound.toUtc().toIso8601String())
-        .eq('status', 'SUCCESS')
-        .maybeSingle();
+    try {
+      final res = await Supabase.instance.client
+          .from('scanning_details')
+          .select('id')
+          .eq('factory_code', widget.factoryCode)
+          .eq('qr_id', qr)
+          .eq('round_slot', _currentRound.toUtc().toIso8601String())
+          .eq('status', 'SUCCESS')
+          .maybeSingle();
 
-    return res != null;
+      if (res != null) {
+        debugPrint("ExistsSuccess true: ${res['id']}");
+      }
+      return res != null;
+    } catch (e) {
+      debugPrint("ExistsSuccess error: $e");
+      return false;
+    }
   }
 
   Future<bool> _isOnline() async {
@@ -424,6 +432,11 @@ class _ScanningPageState extends State<ScanningPage> {
         return;
       }
 
+      final now = DateTime.now();
+      final scanTime = now.isBefore(_currentRound)
+          ? _currentRound.add(const Duration(seconds: 1))
+          : now;
+
       await Supabase.instance.client.from('scanning_details').insert({
         'guard_name': widget.guardName,
         'qr_id': p['qr_id'],
@@ -431,7 +444,7 @@ class _ScanningPageState extends State<ScanningPage> {
         'lat': pos.latitude,
         'log': pos.longitude,
         'factory_code': widget.factoryCode,
-        'scan_time': DateTime.now().toUtc().toIso8601String(),
+        'scan_time': scanTime.toUtc().toIso8601String(),
         'round_slot': _currentRound.toUtc().toIso8601String(),
         'status': 'SUCCESS',
       });

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 
 class PatrolRound {
@@ -75,6 +76,17 @@ bool isWithinPatrolScanWindow(DateTime now, DateTime roundStart) {
 
 Map<String, dynamic> getCurrentPatrolRound(DateTime now) {
   final rounds = buildPatrolRounds(now);
+  
+  // Log for debugging timezone / slot alignment issues
+  debugPrint("getCurrentPatrolRound now: $now");
+  for (var r in rounds) {
+    if (r.round == 7 || r.round == 8 || r.round == 14 || r.round == 15 || r.round == 16) {
+      final start = getScanWindowStart(r.time);
+      final end = getScanWindowEnd(r.time);
+      debugPrint("Round ${r.round}: time=${r.time}, start=$start, end=$end");
+    }
+  }
+
   PatrolRound current = rounds.first;
   int currentIndex = 0;
   bool foundActive = false;
