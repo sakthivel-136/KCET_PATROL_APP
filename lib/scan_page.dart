@@ -432,11 +432,6 @@ class _ScanningPageState extends State<ScanningPage> {
         return;
       }
 
-      final now = DateTime.now();
-      final scanTime = now.isBefore(_currentRound)
-          ? _currentRound.add(const Duration(seconds: 1))
-          : now;
-
       await Supabase.instance.client.from('scanning_details').insert({
         'guard_name': widget.guardName,
         'qr_id': p['qr_id'],
@@ -444,7 +439,7 @@ class _ScanningPageState extends State<ScanningPage> {
         'lat': pos.latitude,
         'log': pos.longitude,
         'factory_code': widget.factoryCode,
-        'scan_time': scanTime.toUtc().toIso8601String(),
+        'scan_time': DateTime.now().toUtc().toIso8601String(),
         'round_slot': _currentRound.toUtc().toIso8601String(),
         'status': 'SUCCESS',
       });
