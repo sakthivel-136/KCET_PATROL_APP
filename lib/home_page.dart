@@ -729,7 +729,7 @@ class _HomePageState extends State<HomePage> {
                         ),
                         if (widget.isMaster)
                           IconButton(
-                            icon: const Icon(Icons.campus, color: Color(0xFF005C97)),
+                            icon: const Icon(Icons.business, color: Color(0xFF005C97)),
                             onPressed: _showFactorySelectionDialog,
                             tooltip: "Select Campus",
                           ),

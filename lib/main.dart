@@ -228,12 +228,17 @@ class _LoginScreenState extends State<LoginScreen> {
     final db = Supabase.instance.client;
 
     try {
-      final admin = await db
-          .from('login_info')
-          .select('name,role')
-          .eq('user_pin', pin)
-          .eq('is_active', true)
-          .maybeSingle();
+      Map<String, dynamic>? admin;
+      try {
+        admin = await db
+            .from('login_info')
+            .select('name,role')
+            .eq('user_pin', pin)
+            .eq('is_active', true)
+            .maybeSingle();
+      } catch (e) {
+        debugPrint('login_info table query failed, falling back to security_users: $e');
+      }
 
       if (admin != null) {
         _goHome(
@@ -248,46 +253,63 @@ class _LoginScreenState extends State<LoginScreen> {
 
       final guard = await db
           .from('security_users')
-          .select('security_name,campus,shift_start,shift_end')
+          .select('security_id,security_name,factory,role')
           .eq('security_password', pin)
           .maybeSingle();
 
       if (guard != null) {
         // Shift Validation Logic
-        String? startStr = guard['shift_start'];
-        String? endStr = guard['shift_end'];
+        if (guard['role'] != 'ADMIN') {
+          try {
+            // Find shift allocations for the user
+            final allocations = await db
+                .from('shift_allocations')
+                .select('shift_id, shifts(start_time, end_time)')
+                .eq('security_id', guard['security_id']);
 
-        if (startStr != null && endStr != null) {
-          final now = DateTime.now();
-          final currentMinutes = now.hour * 60 + now.minute;
-          
-          final startParts = startStr.split(':');
-          final endParts = endStr.split(':');
-          
-          if (startParts.length >= 2 && endParts.length >= 2) {
-            final startMinutes = int.parse(startParts[0]) * 60 + int.parse(startParts[1]);
-            final endMinutes = int.parse(endParts[0]) * 60 + int.parse(endParts[1]);
-            
-            bool isWithinShift = false;
-            if (startMinutes <= endMinutes) {
-              isWithinShift = currentMinutes >= startMinutes && currentMinutes <= endMinutes;
-            } else {
-              // Overnight shift e.g., 22:00 to 06:00
-              isWithinShift = currentMinutes >= startMinutes || currentMinutes <= endMinutes;
+            if (allocations != null && allocations.isNotEmpty) {
+              final shiftData = allocations[0]['shifts'];
+              if (shiftData != null) {
+                String? startStr = shiftData['start_time'];
+                String? endStr = shiftData['end_time'];
+
+                if (startStr != null && endStr != null) {
+                  final now = DateTime.now();
+                  final currentMinutes = now.hour * 60 + now.minute;
+                  
+                  final startParts = startStr.split(':');
+                  final endParts = endStr.split(':');
+                  
+                  if (startParts.length >= 2 && endParts.length >= 2) {
+                    final startMinutes = int.parse(startParts[0]) * 60 + int.parse(startParts[1]);
+                    final endMinutes = int.parse(endParts[0]) * 60 + int.parse(endParts[1]);
+                    
+                    bool isWithinShift = false;
+                    if (startMinutes <= endMinutes) {
+                      isWithinShift = currentMinutes >= startMinutes && currentMinutes <= endMinutes;
+                    } else {
+                      // Overnight shift e.g., 22:00 to 06:00
+                      isWithinShift = currentMinutes >= startMinutes || currentMinutes <= endMinutes;
+                    }
+                    
+                    if (!isWithinShift) {
+                      _pinCtrl.clear();
+                      _showMsg("Outside assigned shift hours! Your shift is active from $startStr to $endStr only.");
+                      return;
+                    }
+                  }
+                }
+              }
             }
-            
-            if (!isWithinShift) {
-              _pinCtrl.clear();
-              _showMsg("Outside assigned shift hours ($startStr - $endStr)");
-              return;
-            }
+          } catch (shiftError) {
+            debugPrint("Failed to validate shift allocation: $shiftError");
           }
         }
 
         _goHome(
           guard['security_name'],
-          guard['campus'],
-          false,
+          guard['factory'] ?? 'KCET01',
+          guard['role'] == 'ADMIN',
           true,
         );
 
@@ -297,8 +319,10 @@ class _LoginScreenState extends State<LoginScreen> {
       _pinCtrl.clear();
 
       _showMsg("INVALID PIN");
-    } catch (e) {
-      _showMsg("Server Error");
+    } catch (e, stack) {
+      debugPrint('Login exception: $e');
+      debugPrint('Stacktrace: $stack');
+      _showMsg("Server Error: $e");
     } finally {
       if (mounted) setState(() => _loading = false);
     }

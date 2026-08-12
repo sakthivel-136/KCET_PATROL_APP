@@ -155,18 +155,20 @@ class _ScanningPageState extends State<ScanningPage> {
       setState(() {
         _checkpoints = qrData.map((e) {
           final id = _norm(e['qr_id']);
-          final previous = _checkpoints.firstWhere(
-            (old) => _norm(old['qr_id']) == id,
-            orElse: () => {},
+          
+          // Find matching existing checkpoint in current state
+          final existing = _checkpoints.cast<Map<String, dynamic>?>().firstWhere(
+            (old) => old != null && _norm(old['qr_id']) == id,
+            orElse: () => null,
           );
 
           return {
             ...e,
             'completed': success.contains(id),
-            'scanned_once': previous['scanned_once'] ?? false,
-            'waiting_done': previous['waiting_done'] ?? false,
-            'timer': previous['timer'] ?? 0,
-            'start_time': previous['start_time'],
+            'scanned_once': existing != null ? (existing['scanned_once'] ?? false) : false,
+            'waiting_done': existing != null ? (existing['waiting_done'] ?? false) : false,
+            'timer': existing != null ? (existing['timer'] ?? 0) : 0,
+            'start_time': existing != null ? existing['start_time'] : null,
             'waiting_time': e['waiting_time'] ?? 15,
           };
         }).toList();
