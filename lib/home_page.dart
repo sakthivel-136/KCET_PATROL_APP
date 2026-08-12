@@ -43,7 +43,7 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    _selectedCampusCode = widget.campusCode;
+    _selectedCampusCode = widget.campusCode == "ADMIN" ? "KCET01" : widget.campusCode;
     _fetchInitialData();
   }
 
