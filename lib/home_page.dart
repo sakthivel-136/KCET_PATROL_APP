@@ -7,13 +7,13 @@ import 'scan_page.dart';
 
 class HomePage extends StatefulWidget {
   final String guardName;
-  final String factoryCode;
+  final String campusCode;
   final bool isMaster;
   final bool canScan;
   const HomePage(
       {super.key,
       required this.guardName,
-      required this.factoryCode,
+      required this.campusCode,
       required this.isMaster,
       required this.canScan});
 
@@ -22,14 +22,14 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  String _factoryName = "Loading...";
-  String _selectedFactoryCode = "";
+  String _campusName = "Loading...";
+  String _selectedCampusCode = "";
   int _totalQrCount = 0;
   int _scannedCount = 0;
   bool _isLoadingStatus = true;
   String _currentRound = "Calculating...";
   String _nextRoundTime = "";
-  List<Map<String, dynamic>> _factories = [];
+  List<Map<String, dynamic>> _campuses = [];
   List<Map<String, dynamic>> _roundSlots = [];
   String _patrolStatus = "In Progress";
   DateTime? _currentRoundStart;
@@ -43,7 +43,7 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    _selectedFactoryCode = widget.factoryCode;
+    _selectedCampusCode = widget.campusCode;
     _fetchInitialData();
   }
 
@@ -56,13 +56,13 @@ class _HomePageState extends State<HomePage> {
   Future<void> _fetchInitialData() async {
     try {
       await Future.wait([
-        _fetchFactories().timeout(
+        _fetchCampuses().timeout(
           const Duration(seconds: 10),
           onTimeout: () {
             debugPrint('Campuses fetch timeout');
           },
         ),
-        _fetchFactoryName().timeout(
+        _fetchCampusName().timeout(
           const Duration(seconds: 10),
           onTimeout: () {
             debugPrint('Campus name fetch timeout');
@@ -85,14 +85,14 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  Future<void> _fetchFactories() async {
+  Future<void> _fetchCampuses() async {
     try {
       final data = await Supabase.instance.client
           .from('campuses')
-          .select('factory_code, factory_name');
+          .select('campus_code, campus_name');
       if (mounted) {
         setState(() {
-          _factories = List<Map<String, dynamic>>.from(data);
+          _campuses = List<Map<String, dynamic>>.from(data);
         });
       }
     } catch (e) {
@@ -100,26 +100,26 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  Future<void> _fetchFactoryName() async {
+  Future<void> _fetchCampusName() async {
     try {
-      if (_selectedFactoryCode == "ADMIN") {
+      if (_selectedCampusCode == "ADMIN") {
         if (mounted) {
-          setState(() => _factoryName = "Administrator");
+          setState(() => _campusName = "Administrator");
         }
         return;
       }
 
       final data = await Supabase.instance.client
           .from('campuses')
-          .select('factory_name')
-          .eq('factory_code', _selectedFactoryCode)
+          .select('campus_name')
+          .eq('campus_code', _selectedCampusCode)
           .single();
       if (mounted) {
-        setState(() => _factoryName = data['factory_name']);
+        setState(() => _campusName = data['campus_name']);
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _factoryName = "Unknown Campus");
+        setState(() => _campusName = "Unknown Campus");
       }
     }
   }
@@ -186,17 +186,17 @@ class _HomePageState extends State<HomePage> {
     bool isScanWindowClosed = now.isAfter(roundEnd);
     
     try {
-      // *** CRITICAL: Always filter by factory_code for independent campus operations ***
+      // *** CRITICAL: Always filter by campus_code for independent campus operations ***
       final totalRes = await client
           .from('qr')
           .select('qr_id')
-          .eq('factory_code', _selectedFactoryCode)
+          .eq('campus_code', _selectedCampusCode)
           .eq('status', 'active');
       
       final scannedRes = await client
           .from('scanning_details')
           .select('qr_id, status')
-          .eq('factory_code', _selectedFactoryCode)
+          .eq('campus_code', _selectedCampusCode)
           .eq('round_slot', roundStart.toUtc().toIso8601String());
 
       final uniqueScans = <String>{};
@@ -233,7 +233,7 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  void _showFactorySelectionDialog() {
+  void _showCampusSelectionDialog() {
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -243,16 +243,16 @@ class _HomePageState extends State<HomePage> {
             width: double.maxFinite,
             child: ListView.builder(
               shrinkWrap: true,
-              itemCount: _factories.length,
+              itemCount: _campuses.length,
               itemBuilder: (BuildContext context, int index) {
-                final campus = _factories[index];
+                final campus = _campuses[index];
                 return ListTile(
-                  title: Text(campus['factory_name']),
-                  subtitle: Text("Code: ${campus['factory_code']}"),
+                  title: Text(campus['campus_name']),
+                  subtitle: Text("Code: ${campus['campus_code']}"),
                   onTap: () {
                     setState(() {
-                      _selectedFactoryCode = campus['factory_code'];
-                      _factoryName = campus['factory_name'];
+                      _selectedCampusCode = campus['campus_code'];
+                      _campusName = campus['campus_name'];
                       // Reset counts when switching campuses
                       _totalQrCount = 0;
                       _scannedCount = 0;
@@ -261,7 +261,7 @@ class _HomePageState extends State<HomePage> {
                     Navigator.of(context).pop();
                     _refreshPatrolStatus();
                   },
-                  trailing: _selectedFactoryCode == campus['factory_code']
+                  trailing: _selectedCampusCode == campus['campus_code']
                       ? const Icon(Icons.check, color: Color(0xFF005C97))
                       : null,
                 );
@@ -293,7 +293,7 @@ class _HomePageState extends State<HomePage> {
       final qrData = await client
           .from('qr')
           .select('qr_id')
-          .eq('factory_code', _selectedFactoryCode)
+          .eq('campus_code', _selectedCampusCode)
           .eq('status', 'active');
       int totalQrCount = qrData.length;
 
@@ -318,7 +318,7 @@ class _HomePageState extends State<HomePage> {
             scannedData = await client
                 .from('scanning_details')
                 .select('qr_id, status, guard_name')
-                .eq('factory_code', _selectedFactoryCode)
+                .eq('campus_code', _selectedCampusCode)
                 .eq('round_slot', slotTime.toUtc().toIso8601String());
 
             final seenQrIds = <String>{};
@@ -380,12 +380,12 @@ class _HomePageState extends State<HomePage> {
       final allQrData = await client
           .from('qr')
           .select('qr_id, qr_name')
-          .eq('factory_code', _selectedFactoryCode)
+          .eq('campus_code', _selectedCampusCode)
           .eq('status', 'active');
       final scanDetails = await client
           .from('scanning_details')
           .select('qr_id, qr_name, guard_name, scan_time, status')
-          .eq('factory_code', _selectedFactoryCode)
+          .eq('campus_code', _selectedCampusCode)
           .eq('round_slot', slotTime.toUtc().toIso8601String());
       Map<String, dynamic> scannedQrMap = {};
       for (var scan in scanDetails) {
@@ -528,7 +528,7 @@ class _HomePageState extends State<HomePage> {
           context: context,
           builder: (BuildContext context) {
             return AlertDialog(
-              title: Text("Patrol Rounds Report - $_factoryName"),
+              title: Text("Patrol Rounds Report - $_campusName"),
               content: SizedBox(
                 width: double.maxFinite,
                 height: 400,
@@ -712,7 +712,7 @@ class _HomePageState extends State<HomePage> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                _factoryName,
+                                _campusName,
                                 style: const TextStyle(
                                     fontSize: 18,
                                     fontWeight: FontWeight.bold,
@@ -730,7 +730,7 @@ class _HomePageState extends State<HomePage> {
                         if (widget.isMaster)
                           IconButton(
                             icon: const Icon(Icons.business, color: Color(0xFF005C97)),
-                            onPressed: _showFactorySelectionDialog,
+                            onPressed: _showCampusSelectionDialog,
                             tooltip: "Select Campus",
                           ),
                       ],
@@ -929,7 +929,7 @@ class _HomePageState extends State<HomePage> {
                         MaterialPageRoute(
                           builder: (c) => ScanningPage(
                             guardName: widget.guardName,
-                            factoryCode: _selectedFactoryCode,
+                            campusCode: _selectedCampusCode,
                             isMaster: widget.isMaster,
                           ),
                         ),

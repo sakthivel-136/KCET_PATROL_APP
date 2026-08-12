@@ -15,13 +15,13 @@ import 'round_utils.dart';
 
 class ScanningPage extends StatefulWidget {
   final String guardName;
-  final String factoryCode;
+  final String campusCode;
   final bool isMaster;
 
   const ScanningPage({
     super.key,
     required this.guardName,
-    required this.factoryCode,
+    required this.campusCode,
     required this.isMaster,
   });
 
@@ -133,13 +133,13 @@ class _ScanningPageState extends State<ScanningPage> {
       final qrData = await client
           .from('qr')
           .select()
-          .eq('factory_code', widget.factoryCode)
+          .eq('campus_code', widget.campusCode)
           .eq('status', 'active');
 
       final scanData = await client
           .from('scanning_details')
           .select('qr_id,status')
-          .eq('factory_code', widget.factoryCode)
+          .eq('campus_code', widget.campusCode)
           .eq('round_slot', _currentRound.toUtc().toIso8601String());
 
       final Set<String> success = {};
@@ -189,7 +189,7 @@ class _ScanningPageState extends State<ScanningPage> {
       final res = await Supabase.instance.client
           .from('scanning_details')
           .select('id')
-          .eq('factory_code', widget.factoryCode)
+          .eq('campus_code', widget.campusCode)
           .eq('qr_id', qr)
           .eq('round_slot', _currentRound.toUtc().toIso8601String())
           .eq('status', 'SUCCESS')
@@ -440,7 +440,7 @@ class _ScanningPageState extends State<ScanningPage> {
         'qr_name': p['qr_name'],
         'lat': pos.latitude,
         'log': pos.longitude,
-        'factory_code': widget.factoryCode,
+        'campus_code': widget.campusCode,
         'scan_time': DateTime.now().toUtc().toIso8601String(),
         'round_slot': _currentRound.toUtc().toIso8601String(),
         'status': 'SUCCESS',
@@ -495,7 +495,7 @@ class _ScanningPageState extends State<ScanningPage> {
         'qr_name': p['qr_name'],
         'lat': pos.latitude,
         'log': pos.longitude,
-        'factory_code': widget.factoryCode,
+        'campus_code': widget.campusCode,
         'scan_time': DateTime.now().toUtc().toIso8601String(),
         'round_slot': _currentRound.toUtc().toIso8601String(),
         'status': 'MISSED',

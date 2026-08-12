@@ -101,7 +101,7 @@ class KcetSecurityRoundsApp extends StatelessWidget {
 
           return HomePage(
             guardName: args?['guardName'] ?? '',
-            factoryCode: args?['factoryCode'] ?? '',
+            campusCode: args?['campusCode'] ?? '',
             isMaster: args?['isMaster'] ?? false,
             canScan: args?['canScan'] ?? false,
           );
@@ -253,7 +253,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
       final guard = await db
           .from('security_users')
-          .select('security_id,security_name,factory,role')
+          .select('security_id,security_name,campus,role')
           .eq('security_password', pin)
           .maybeSingle();
 
@@ -294,7 +294,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     
                     if (!isWithinShift) {
                       _pinCtrl.clear();
-                      _showMsg("Outside assigned shift hours! Your shift is active from $startStr to $endStr only.");
+                      _showErrorDialog("Outside assigned shift hours!\n\nYour shift is active from $startStr to $endStr only. You are not allowed to scan.");
                       return;
                     }
                   }
@@ -308,7 +308,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
         _goHome(
           guard['security_name'],
-          guard['factory'] ?? 'KCET01',
+          guard['campus'] ?? 'KCET01',
           guard['role'] == 'ADMIN',
           true,
         );
@@ -330,6 +330,22 @@ class _LoginScreenState extends State<LoginScreen> {
 
 // ================= UI HELPERS ==================
 
+  void _showErrorDialog(String msg) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Access Denied", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+        content: Text(msg, style: const TextStyle(fontSize: 16)),
+      ),
+    );
+    Future.delayed(const Duration(seconds: 5), () {
+      if (mounted && Navigator.of(context, rootNavigator: true).canPop()) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+    });
+  }
+
   void _showMsg(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(msg)),
@@ -347,7 +363,7 @@ class _LoginScreenState extends State<LoginScreen> {
       '/home',
       arguments: {
         'guardName': name,
-        'factoryCode': campus,
+        'campusCode': campus,
         'isMaster': isAdmin,
         'canScan': canScan,
       },

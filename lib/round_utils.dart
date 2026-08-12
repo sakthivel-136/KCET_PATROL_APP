@@ -11,11 +11,11 @@ class PatrolRound {
 
 List<PatrolRound> buildPatrolRounds(DateTime now) {
   final localDay = DateTime(now.year, now.month, now.day);
-  final cycleStart = now.hour < 6 ? localDay.subtract(const Duration(days: 1)) : localDay;
+  final cycleStart = localDay;
 
   final slots = List<DateTime>.generate(
     24,
-    (index) => DateTime(cycleStart.year, cycleStart.month, cycleStart.day, 6 + index, 0),
+    (index) => DateTime(cycleStart.year, cycleStart.month, cycleStart.day, index, 0),
   );
 
   return List<PatrolRound>.generate(
