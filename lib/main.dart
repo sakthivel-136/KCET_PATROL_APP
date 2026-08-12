@@ -32,9 +32,9 @@ Future<void> main() async {
   try {
     await Future.any([
       Supabase.initialize(
-        url: 'https://iztwxujppgavovmbgkrm.supabase.co',
+        url: 'https://jnzvystfghhhvvnmkygj.supabase.co',
         anonKey:
-            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml6dHd4dWpwcGdhdm92bWJna3JtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg0MTY4ODMsImV4cCI6MjA4Mzk5Mjg4M30.EXtWPyOb7NXoP9s1lXorv_jxfVmB8SWUlb8MgMmLtT0',
+            'sb_publishable_3UHiK7knPpgBjBviPLN0jQ_kMc7p1ci',
       ),
       Future.delayed(const Duration(seconds: 10), () {
         debugPrint('Supabase initialization timeout - continuing anyway');
@@ -45,7 +45,7 @@ Future<void> main() async {
     debugPrint('Supabase initialization warning: $e - app will continue');
   }
 
-  runApp(const VeriPatrolApp());
+  runApp(const KcetSecurityRoundsApp());
 }
 
 // ===================== NOTIFICATION SETUP =======================
@@ -80,14 +80,14 @@ Future<void> _initializeNotifications() async {
 
 // ===================== APP =======================
 
-class VeriPatrolApp extends StatelessWidget {
-  const VeriPatrolApp({super.key});
+class KcetSecurityRoundsApp extends StatelessWidget {
+  const KcetSecurityRoundsApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'VeriPatrol',
+      title: 'KCET Security Rounds',
       theme: ThemeData(
         useMaterial3: true,
         primaryColor: const Color(0xFF005C97),
@@ -248,14 +248,45 @@ class _LoginScreenState extends State<LoginScreen> {
 
       final guard = await db
           .from('security_users')
-          .select('security_name,factory')
+          .select('security_name,campus,shift_start,shift_end')
           .eq('security_password', pin)
           .maybeSingle();
 
       if (guard != null) {
+        // Shift Validation Logic
+        String? startStr = guard['shift_start'];
+        String? endStr = guard['shift_end'];
+
+        if (startStr != null && endStr != null) {
+          final now = DateTime.now();
+          final currentMinutes = now.hour * 60 + now.minute;
+          
+          final startParts = startStr.split(':');
+          final endParts = endStr.split(':');
+          
+          if (startParts.length >= 2 && endParts.length >= 2) {
+            final startMinutes = int.parse(startParts[0]) * 60 + int.parse(startParts[1]);
+            final endMinutes = int.parse(endParts[0]) * 60 + int.parse(endParts[1]);
+            
+            bool isWithinShift = false;
+            if (startMinutes <= endMinutes) {
+              isWithinShift = currentMinutes >= startMinutes && currentMinutes <= endMinutes;
+            } else {
+              // Overnight shift e.g., 22:00 to 06:00
+              isWithinShift = currentMinutes >= startMinutes || currentMinutes <= endMinutes;
+            }
+            
+            if (!isWithinShift) {
+              _pinCtrl.clear();
+              _showMsg("Outside assigned shift hours ($startStr - $endStr)");
+              return;
+            }
+          }
+        }
+
         _goHome(
           guard['security_name'],
-          guard['factory'],
+          guard['campus'],
           false,
           true,
         );
@@ -283,7 +314,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _goHome(
     String name,
-    String factory,
+    String campus,
     bool isAdmin,
     bool canScan,
   ) {
@@ -292,7 +323,7 @@ class _LoginScreenState extends State<LoginScreen> {
       '/home',
       arguments: {
         'guardName': name,
-        'factoryCode': factory,
+        'factoryCode': campus,
         'isMaster': isAdmin,
         'canScan': canScan,
       },
@@ -353,7 +384,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 20),
 
                 const Text(
-                  "VeriPatrol",
+                  "KCET Security Rounds",
                   style: TextStyle(
                     fontSize: 28,
                     fontWeight: FontWeight.bold,
@@ -479,7 +510,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 30),
 
                 const Text(
-                  "Powered by Godvel",
+                  "Powered by KCET",
                   style: TextStyle(
                     fontSize: 11,
                     color: Colors.white60,

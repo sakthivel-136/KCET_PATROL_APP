@@ -1,4 +1,4 @@
-package com.veripatrol.veripatrol
+package com.kcet.securityrounds
 
 import io.flutter.embedding.android.FlutterActivity
 

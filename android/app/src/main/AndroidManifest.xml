@@ -49,7 +49,7 @@
     <!-- ================= APPLICATION ================= -->
 
     <application
-        android:label="veripatrol"
+        android:label="kcet_security_rounds"
         android:name="${applicationName}"
         android:icon="@mipmap/launcher_icon"
         android:usesCleartextTraffic="false"

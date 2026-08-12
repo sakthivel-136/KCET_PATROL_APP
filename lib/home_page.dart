@@ -59,13 +59,13 @@ class _HomePageState extends State<HomePage> {
         _fetchFactories().timeout(
           const Duration(seconds: 10),
           onTimeout: () {
-            debugPrint('Factories fetch timeout');
+            debugPrint('Campuses fetch timeout');
           },
         ),
         _fetchFactoryName().timeout(
           const Duration(seconds: 10),
           onTimeout: () {
-            debugPrint('Factory name fetch timeout');
+            debugPrint('Campus name fetch timeout');
           },
         ),
         _refreshPatrolStatus().timeout(
@@ -88,7 +88,7 @@ class _HomePageState extends State<HomePage> {
   Future<void> _fetchFactories() async {
     try {
       final data = await Supabase.instance.client
-          .from('factories')
+          .from('campuses')
           .select('factory_code, factory_name');
       if (mounted) {
         setState(() {
@@ -96,7 +96,7 @@ class _HomePageState extends State<HomePage> {
         });
       }
     } catch (e) {
-      debugPrint("Error fetching factories: $e");
+      debugPrint("Error fetching campuses: $e");
     }
   }
 
@@ -110,7 +110,7 @@ class _HomePageState extends State<HomePage> {
       }
 
       final data = await Supabase.instance.client
-          .from('factories')
+          .from('campuses')
           .select('factory_name')
           .eq('factory_code', _selectedFactoryCode)
           .single();
@@ -119,7 +119,7 @@ class _HomePageState extends State<HomePage> {
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _factoryName = "Unknown Factory");
+        setState(() => _factoryName = "Unknown Campus");
       }
     }
   }
@@ -186,7 +186,7 @@ class _HomePageState extends State<HomePage> {
     bool isScanWindowClosed = now.isAfter(roundEnd);
     
     try {
-      // *** CRITICAL: Always filter by factory_code for independent factory operations ***
+      // *** CRITICAL: Always filter by factory_code for independent campus operations ***
       final totalRes = await client
           .from('qr')
           .select('qr_id')
@@ -238,22 +238,22 @@ class _HomePageState extends State<HomePage> {
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: const Text("Select Factory"),
+          title: const Text("Select Campus"),
           content: SizedBox(
             width: double.maxFinite,
             child: ListView.builder(
               shrinkWrap: true,
               itemCount: _factories.length,
               itemBuilder: (BuildContext context, int index) {
-                final factory = _factories[index];
+                final campus = _factories[index];
                 return ListTile(
-                  title: Text(factory['factory_name']),
-                  subtitle: Text("Code: ${factory['factory_code']}"),
+                  title: Text(campus['factory_name']),
+                  subtitle: Text("Code: ${campus['factory_code']}"),
                   onTap: () {
                     setState(() {
-                      _selectedFactoryCode = factory['factory_code'];
-                      _factoryName = factory['factory_name'];
-                      // Reset counts when switching factories
+                      _selectedFactoryCode = campus['factory_code'];
+                      _factoryName = campus['factory_name'];
+                      // Reset counts when switching campuses
                       _totalQrCount = 0;
                       _scannedCount = 0;
                       _patrolStatus = "In Progress";
@@ -261,7 +261,7 @@ class _HomePageState extends State<HomePage> {
                     Navigator.of(context).pop();
                     _refreshPatrolStatus();
                   },
-                  trailing: _selectedFactoryCode == factory['factory_code']
+                  trailing: _selectedFactoryCode == campus['factory_code']
                       ? const Icon(Icons.check, color: Color(0xFF005C97))
                       : null,
                 );
@@ -401,7 +401,7 @@ class _HomePageState extends State<HomePage> {
                 width: double.maxFinite,
                 height: 400,
                 child: allQrData.isEmpty
-                    ? const Center(child: Text("No QR codes assigned to this factory"))
+                    ? const Center(child: Text("No QR codes assigned to this campus"))
                     : ListView.builder(
                         itemCount: allQrData.length,
                         itemBuilder: (context, index) {
@@ -729,9 +729,9 @@ class _HomePageState extends State<HomePage> {
                         ),
                         if (widget.isMaster)
                           IconButton(
-                            icon: const Icon(Icons.factory, color: Color(0xFF005C97)),
+                            icon: const Icon(Icons.campus, color: Color(0xFF005C97)),
                             onPressed: _showFactorySelectionDialog,
-                            tooltip: "Select Factory",
+                            tooltip: "Select Campus",
                           ),
                       ],
                     ),

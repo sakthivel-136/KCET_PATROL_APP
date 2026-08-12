@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.veripatrol" "\0"
-            VALUE "FileDescription", "veripatrol" "\0"
+            VALUE "CompanyName", "com.kcet_security_rounds" "\0"
+            VALUE "FileDescription", "kcet_security_rounds" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "veripatrol" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.veripatrol. All rights reserved." "\0"
-            VALUE "OriginalFilename", "veripatrol.exe" "\0"
-            VALUE "ProductName", "veripatrol" "\0"
+            VALUE "InternalName", "kcet_security_rounds" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 com.kcet_security_rounds. All rights reserved." "\0"
+            VALUE "OriginalFilename", "kcet_security_rounds.exe" "\0"
+            VALUE "ProductName", "kcet_security_rounds" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

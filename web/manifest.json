@@ -1,6 +1,6 @@
 {
-    "name": "veripatrol",
-    "short_name": "veripatrol",
+    "name": "kcet_security_rounds",
+    "short_name": "kcet_security_rounds",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

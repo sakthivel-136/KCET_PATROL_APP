@@ -1,4 +1,4 @@
-# Android 13 Crash Fix Guide - VeriPatrol
+# Android 13 Crash Fix Guide - KCET Security Rounds
 
 ## Problems Fixed ✅
 

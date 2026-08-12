@@ -9,42 +9,14 @@ class PatrolRound {
   PatrolRound(this.time, this.label, this.round);
 }
 
-List<DateTime> _buildDaySlots(DateTime date) {
-  final base = DateTime(date.year, date.month, date.day);
-  return List<DateTime>.generate(
-    16,
-    (index) => DateTime(base.year, base.month, base.day, 6 + index),
-  );
-}
-
-List<DateTime> _buildNightSlots(DateTime date) {
-  final base = DateTime(date.year, date.month, date.day);
-  return [
-    DateTime(base.year, base.month, base.day, 22, 0),
-    DateTime(base.year, base.month, base.day, 22, 30),
-    DateTime(base.year, base.month, base.day, 23, 0),
-    DateTime(base.year, base.month, base.day, 23, 30),
-  ];
-}
-
-List<DateTime> _buildEarlyMorningSlots(DateTime date) {
-  final base = DateTime(date.year, date.month, date.day);
-  return List<DateTime>.generate(
-    12,
-    (index) => DateTime(base.year, base.month, base.day, index ~/ 2, (index % 2) * 30),
-  );
-}
-
 List<PatrolRound> buildPatrolRounds(DateTime now) {
   final localDay = DateTime(now.year, now.month, now.day);
   final cycleStart = now.hour < 6 ? localDay.subtract(const Duration(days: 1)) : localDay;
-  final cycleEndDay = cycleStart.add(const Duration(days: 1));
 
-  final slots = <DateTime>[];
-  slots.addAll(_buildDaySlots(cycleStart));
-  slots.addAll(_buildNightSlots(cycleStart));
-  slots.addAll(_buildEarlyMorningSlots(cycleEndDay));
-  slots.sort();
+  final slots = List<DateTime>.generate(
+    24,
+    (index) => DateTime(cycleStart.year, cycleStart.month, cycleStart.day, 6 + index, 0),
+  );
 
   return List<PatrolRound>.generate(
     slots.length,
@@ -56,16 +28,12 @@ List<PatrolRound> buildPatrolRounds(DateTime now) {
   );
 }
 
-bool _isHourlySlot(DateTime time) {
-  return time.minute == 0 && time.hour >= 6 && time.hour <= 21;
-}
-
 DateTime getScanWindowStart(DateTime roundStart) {
-  return roundStart.subtract(const Duration(minutes: 5));
+  return roundStart.subtract(const Duration(minutes: 10));
 }
 
 DateTime getScanWindowEnd(DateTime roundStart) {
-  return roundStart.add(const Duration(minutes: 15));
+  return roundStart.add(const Duration(minutes: 20));
 }
 
 bool isWithinPatrolScanWindow(DateTime now, DateTime roundStart) {
@@ -77,16 +45,6 @@ bool isWithinPatrolScanWindow(DateTime now, DateTime roundStart) {
 Map<String, dynamic> getCurrentPatrolRound(DateTime now) {
   final rounds = buildPatrolRounds(now);
   
-  // Log for debugging timezone / slot alignment issues
-  debugPrint("getCurrentPatrolRound now: $now");
-  for (var r in rounds) {
-    if (r.round == 7 || r.round == 8 || r.round == 14 || r.round == 15 || r.round == 16) {
-      final start = getScanWindowStart(r.time);
-      final end = getScanWindowEnd(r.time);
-      debugPrint("Round ${r.round}: time=${r.time}, start=$start, end=$end");
-    }
-  }
-
   PatrolRound current = rounds.first;
   int currentIndex = 0;
   bool foundActive = false;

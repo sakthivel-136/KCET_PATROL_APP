@@ -6,7 +6,7 @@ plugins {
 
 android {
     // Standard namespace for your package
-    namespace = "com.veripatrol.veripatrol"
+    namespace = "com.kcet.securityrounds"
     
     // Using modern Flutter defaults (API 34 or 35+)
     compileSdk = flutter.compileSdkVersion
@@ -25,7 +25,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.veripatrol.veripatrol"
+        applicationId = "com.kcet.securityrounds"
         
         // Bumping to 24 as required by Flutter 3.35+ and modern plugins
         minSdk = 24 

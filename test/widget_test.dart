@@ -8,12 +8,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:veripatrol/main.dart';
+import 'package:kcet_security_rounds/main.dart';
 
 void main() {
   testWidgets('App builds smoke test', (WidgetTester tester) async {
     // Build our app and trigger a frame.
-    await tester.pumpWidget(const VeriPatrolApp());
+    await tester.pumpWidget(const KCET Security RoundsApp());
 
     // Verify the app renders by checking that the login screen is present.
     expect(find.byType(LoginScreen), findsOneWidget);
