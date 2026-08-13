@@ -162,12 +162,21 @@ class _ScanningPageState extends State<ScanningPage> {
             orElse: () => null,
           );
 
+          final hasBeenScanned = existing != null &&
+              ((existing['scanned_once'] == true) || (existing['waiting_done'] == true));
+
           return {
             ...e,
             'completed': success.contains(id),
-            'scanned_once': existing != null ? (existing['scanned_once'] ?? false) : false,
-            'waiting_done': existing != null ? (existing['waiting_done'] ?? false) : false,
-            'timer': existing != null ? (existing['timer'] ?? 0) : 0,
+            'scanned_once': hasBeenScanned
+                ? (existing['scanned_once'] ?? false)
+                : false,
+            'waiting_done': hasBeenScanned
+                ? (existing['waiting_done'] ?? false)
+                : false,
+            'timer': hasBeenScanned
+                ? (existing['timer'] ?? 0)
+                : 0,
             'start_time': existing != null ? existing['start_time'] : null,
             'waiting_time': e['waiting_time'] ?? 15,
           };

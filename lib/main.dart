@@ -7,6 +7,7 @@ import 'package:timezone/timezone.dart' as tz;
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import 'package:intl/intl.dart';
 import 'home_page.dart';
 import 'round_utils.dart';
 
@@ -300,6 +301,11 @@ class _LoginScreenState extends State<LoginScreen> {
                   }
                 }
               }
+            } else {
+              // No allocation for today
+              _pinCtrl.clear();
+              _showErrorDialog("Access Denied!\n\nYou have no shift allocated for today.");
+              return;
             }
           } catch (shiftError) {
             debugPrint("Failed to validate shift allocation: $shiftError");
