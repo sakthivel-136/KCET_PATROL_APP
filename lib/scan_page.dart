@@ -546,25 +546,28 @@ class _ScanningPageState extends State<ScanningPage> {
     Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) return t.cancel();
 
-      final remain = p['waiting_time'] -
-          DateTime.now().difference(p['start_time']).inSeconds;
+      final cp = _checkpoints[index];
+      if (cp['start_time'] == null) {
+        t.cancel();
+        return;
+      }
+
+      final remain = cp['waiting_time'] -
+          DateTime.now().difference(cp['start_time'] as DateTime).inSeconds;
 
       if (remain <= 0) {
         t.cancel();
 
         setState(() {
-          p['timer'] = 0;
+          cp['timer'] = 0;
           _overlayTimer = 0;
-
-          p['waiting_done'] = true;
-
-          // ❗ DO NOT CLEAR activeQrId HERE
+          cp['waiting_done'] = true;
         });
 
         HapticFeedback.vibrate();
       } else {
         setState(() {
-          p['timer'] = remain;
+          cp['timer'] = remain;
           _overlayTimer = remain;
         });
       }
@@ -675,27 +678,31 @@ class _ScanningPageState extends State<ScanningPage> {
                         ),
                         if (_overlayTimer > 0)
                           Positioned.fill(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.end,
-                              children: [
-                                Text(
-                                  "$_overlayTimer",
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 36,
-                                    fontWeight: FontWeight.bold,
+                            child: Container(
+                              color: Colors.black.withOpacity(0.5),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    "$_overlayTimer",
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 48,
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
-                                ),
-                                Padding(
-                                  padding: const EdgeInsets.all(10),
-                                  child: LinearProgressIndicator(
-                                    value: _overlayTimer / _totalTime,
-                                    backgroundColor: Colors.white24,
-                                    valueColor: const AlwaysStoppedAnimation(
-                                        Colors.yellow),
+                                  const SizedBox(height: 10),
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                                    child: LinearProgressIndicator(
+                                      value: _overlayTimer / _totalTime,
+                                      backgroundColor: Colors.white24,
+                                      valueColor: const AlwaysStoppedAnimation(
+                                          Colors.yellow),
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
                       ],
@@ -784,27 +791,12 @@ class _ScanningPageState extends State<ScanningPage> {
                             ),
                             if (p['timer'] > 0) ...[
                               const SizedBox(height: 8),
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    "WAIT ${p['timer']}s",
-                                    style: TextStyle(
-                                      color: txt,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  SizedBox(
-                                    width: 100,
-                                    child: LinearProgressIndicator(
-                                      value: p['timer'] /
-                                          (p['waiting_time'] ?? 15),
-                                      backgroundColor: Colors.white24,
-                                      valueColor: AlwaysStoppedAnimation(txt),
-                                    ),
-                                  ),
-                                ],
+                              Text(
+                                "WAIT ${p['timer']}s",
+                                style: TextStyle(
+                                  color: txt,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ]
                           ],

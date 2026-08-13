@@ -729,9 +729,9 @@ class _HomePageState extends State<HomePage> {
                         ),
                         if (widget.isMaster)
                           IconButton(
-                            icon: const Icon(Icons.business, color: Color(0xFF005C97)),
-                            onPressed: _showCampusSelectionDialog,
-                            tooltip: "Select Campus",
+                            icon: const Icon(Icons.settings_suggest, color: Color(0xFF005C97)),
+                            onPressed: _showShiftManagementDialog,
+                            tooltip: "Manage Shift Allocations",
                           ),
                       ],
                     ),
@@ -1029,5 +1029,197 @@ class _HomePageState extends State<HomePage> {
       ),
       child: child,
     );
+  }
+
+  // ================= SHIFT MANAGEMENT =================
+
+  Future<void> _showShiftManagementDialog() async {
+    final client = Supabase.instance.client;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return const AlertDialog(
+          content: Row(
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(width: 16),
+              Text("Loading allocations..."),
+            ],
+          ),
+        );
+      },
+    );
+
+    try {
+      // Fetch guards, active shifts, and existing allocations
+      final usersRes = await client
+          .from('security_users')
+          .select('security_id, security_name, role')
+          .eq('role', 'Guard');
+      
+      final shiftsRes = await client
+          .from('shifts')
+          .select('shift_id, shift_name, start_time, end_time');
+          
+      final allocsRes = await client
+          .from('shift_allocations')
+          .select('security_id, shift_id');
+
+      if (!mounted) return;
+      Navigator.of(context).pop(); // dismiss loading
+
+      final List<Map<String, dynamic>> guards = List<Map<String, dynamic>>.from(usersRes);
+      final List<Map<String, dynamic>> shifts = List<Map<String, dynamic>>.from(shiftsRes);
+      final List<Map<String, dynamic>> allocs = List<Map<String, dynamic>>.from(allocsRes);
+
+      showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return StatefulBuilder(
+            builder: (context, setDialogState) {
+              return AlertDialog(
+                title: const Text("Edit Guard Shifts"),
+                content: SizedBox(
+                  width: double.maxFinite,
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: guards.length,
+                    itemBuilder: (context, index) {
+                      final guard = guards[index];
+                      final gId = guard['security_id'];
+                      
+                      // Find active allocation for this guard
+                      final currentAlloc = allocs.cast<Map<String, dynamic>?>().firstWhere(
+                        (a) => a != null && a['security_id'] == gId,
+                        orElse: () => null,
+                      );
+                      
+                      final currentShiftId = currentAlloc?['shift_id'];
+                      final currentShift = shifts.cast<Map<String, dynamic>?>().firstWhere(
+                        (s) => s != null && s['shift_id'] == currentShiftId,
+                        orElse: () => null,
+                      );
+
+                      return Card(
+                        margin: const EdgeInsets.symmetric(vertical: 4),
+                        child: Padding(
+                          padding: const EdgeInsets.all(8.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                guard['security_name'] ?? 'Guard',
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                              ),
+                              Text("ID: $gId", style: const TextStyle(color: Colors.black54, fontSize: 12)),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  const Text("Shift: ", style: TextStyle(fontWeight: FontWeight.w500)),
+                                  Expanded(
+                                    child: DropdownButton<String>(
+                                      isExpanded: true,
+                                      value: currentShiftId,
+                                      hint: const Text("No Shift Assigned"),
+                                      items: [
+                                        const DropdownMenuItem<String>(
+                                          value: null,
+                                          child: Text("Unassigned"),
+                                        ),
+                                        ...shifts.map((s) {
+                                          return DropdownMenuItem<String>(
+                                            value: s['shift_id'],
+                                            child: Text("${s['shift_name']} (${s['start_time']} - ${s['end_time']})"),
+                                          );
+                                        })
+                                      ],
+                                      onChanged: (newShiftId) async {
+                                        // Update state inside dialog and DB
+                                        await _editGuardShift(gId, newShiftId);
+                                        
+                                        // Update local list
+                                        if (currentAlloc != null) {
+                                          if (newShiftId == null) {
+                                            allocs.remove(currentAlloc);
+                                          } else {
+                                            currentAlloc['shift_id'] = newShiftId;
+                                          }
+                                        } else if (newShiftId != null) {
+                                          allocs.add({
+                                            'security_id': gId,
+                                            'shift_id': newShiftId,
+                                          });
+                                        }
+                                        
+                                        setDialogState(() {});
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text("Done"),
+                  ),
+                ],
+              );
+            }
+          );
+        },
+      );
+    } catch (e) {
+      if (mounted) Navigator.of(context).pop(); // dismiss loading
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error fetching shift config: $e")),
+      );
+    }
+  }
+
+  Future<void> _editGuardShift(String securityId, String? shiftId) async {
+    final client = Supabase.instance.client;
+    try {
+      // First delete any previous allocations for this guard
+      await client
+          .from('shift_allocations')
+          .delete()
+          .eq('security_id', securityId);
+
+      if (shiftId != null) {
+        // Insert the new shift allocation
+        await client.from('shift_allocations').insert({
+          'security_id': securityId,
+          'shift_id': shiftId,
+          'allocation_date': '2099-12-31', // match your date structure
+        });
+      }
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Shift allocation saved successfully!"),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Failed to update shift: $e"),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 }
