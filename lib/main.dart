@@ -174,13 +174,22 @@ class _LoginScreenState extends State<LoginScreen> {
 // ================= NOTIFICATION ==================
 
   Future<void> _requestNotificationPermission() async {
+    // Request notification permission first
     final status = await Permission.notification.status;
-
     if (!status.isGranted) {
-      final result = await Permission.notification.request();
-      if (!result.isGranted) {
-        debugPrint('Notification permission denied');
-      }
+      await Permission.notification.request();
+    }
+
+    // Request camera permission for QR scanner
+    final cameraStatus = await Permission.camera.status;
+    if (!cameraStatus.isGranted) {
+      await Permission.camera.request();
+    }
+
+    // Request location permissions for logs
+    final locationStatus = await Permission.location.status;
+    if (!locationStatus.isGranted) {
+      await Permission.location.request();
     }
   }
 
@@ -192,15 +201,16 @@ class _LoginScreenState extends State<LoginScreen> {
 
     for (int i = 0; i < rounds.length && i < 24; i++) {
       final windowStart = getScanWindowStart(rounds[i].time);
-      final timeUtc = windowStart.toUtc().subtract(const Duration(minutes: 5));
+      // Scheduled to fire exactly 15 minutes before the round start (e.g., 10:45 PM alert for 11:00 PM round)
+      final timeUtc = windowStart.toUtc().subtract(const Duration(minutes: 15));
       final time = tz.TZDateTime.from(timeUtc, tz.local);
 
       if (time.isBefore(now)) continue;
 
       await flutterLocalNotificationsPlugin.zonedSchedule(
         i,
-        "PATROL ALERT",
-        "⏰ Patrol starts in 5 minutes!",
+        "PATROL ROUND INCOMING",
+        "⏰ Patrol scan starts in 15 minutes! Please open the app.",
         time,
         const NotificationDetails(
           android: AndroidNotificationDetails(
