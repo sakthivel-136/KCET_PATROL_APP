@@ -91,7 +91,17 @@ class KcetSecurityRoundsApp extends StatelessWidget {
       title: 'KCET Security Rounds',
       theme: ThemeData(
         useMaterial3: true,
+        brightness: Brightness.dark,
         primaryColor: const Color(0xFF005C97),
+        scaffoldBackgroundColor: const Color(0xFF0F172A), // Premium Slate/Indigo Dark background
+        cardTheme: const CardThemeData(
+          color: Color(0xFF1E293B),
+        ),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF005C97),
+          brightness: Brightness.dark,
+          surface: const Color(0xFF1E293B),
+        ),
       ),
       initialRoute: '/',
       routes: {
@@ -269,42 +279,55 @@ class _LoginScreenState extends State<LoginScreen> {
                 .eq('security_id', guard['security_id']);
 
             if (allocations != null && allocations.isNotEmpty) {
-              final shiftData = allocations[0]['shifts'];
-              if (shiftData != null) {
-                String? startStr = shiftData['start_time'];
-                String? endStr = shiftData['end_time'];
+              bool anyActiveShift = false;
+              String allowedHoursMessage = "";
 
-                if (startStr != null && endStr != null) {
-                  final now = DateTime.now();
-                  final currentMinutes = now.hour * 60 + now.minute;
-                  
-                  final startParts = startStr.split(':');
-                  final endParts = endStr.split(':');
-                  
-                  if (startParts.length >= 2 && endParts.length >= 2) {
-                    final startMinutes = int.parse(startParts[0]) * 60 + int.parse(startParts[1]);
-                    final endMinutes = int.parse(endParts[0]) * 60 + int.parse(endParts[1]);
+              for (var allocation in allocations) {
+                final shiftData = allocation['shifts'];
+                if (shiftData != null) {
+                  String? startStr = shiftData['start_time'];
+                  String? endStr = shiftData['end_time'];
+
+                  if (startStr != null && endStr != null) {
+                    final now = DateTime.now();
+                    final currentMinutes = now.hour * 60 + now.minute;
                     
-                    bool isWithinShift = false;
-                    if (startMinutes <= endMinutes) {
-                      isWithinShift = currentMinutes >= startMinutes && currentMinutes <= endMinutes;
-                    } else {
-                      // Overnight shift e.g., 22:00 to 06:00
-                      isWithinShift = currentMinutes >= startMinutes || currentMinutes <= endMinutes;
-                    }
+                    final startParts = startStr.split(':');
+                    final endParts = endStr.split(':');
                     
-                    if (!isWithinShift) {
-                      _pinCtrl.clear();
-                      _showErrorDialog("Outside assigned shift hours!\n\nYour shift is active from $startStr to $endStr only. You are not allowed to scan.");
-                      return;
+                    if (startParts.length >= 2 && endParts.length >= 2) {
+                      final startMinutes = int.parse(startParts[0]) * 60 + int.parse(startParts[1]);
+                      final endMinutes = int.parse(endParts[0]) * 60 + int.parse(endParts[1]);
+                      
+                      bool isWithinShift = false;
+                      if (startMinutes <= endMinutes) {
+                        isWithinShift = currentMinutes >= startMinutes && currentMinutes <= endMinutes;
+                      } else {
+                        // Overnight shift e.g., 22:00 to 06:00
+                        isWithinShift = currentMinutes >= startMinutes || currentMinutes <= endMinutes;
+                      }
+                      
+                      if (isWithinShift) {
+                        anyActiveShift = true;
+                        break;
+                      }
+                      
+                      if (allowedHoursMessage.isNotEmpty) allowedHoursMessage += "\n";
+                      allowedHoursMessage += "- $startStr to $endStr";
                     }
                   }
                 }
               }
+
+              if (!anyActiveShift) {
+                _pinCtrl.clear();
+                _showErrorDialog("Outside assigned shift hours!\n\nYour shifts are:\n$allowedHoursMessage\n\nYou are not allowed to scan.");
+                return;
+              }
             } else {
               // No allocation for today
               _pinCtrl.clear();
-              _showErrorDialog("Access Denied!\n\nYou have no shift allocated for today.");
+              _showErrorDialog("Access Denied!\n\nYou have no shifts allocated.");
               return;
             }
           } catch (shiftError) {
@@ -381,14 +404,15 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFF0F172A),
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              Color(0xFF005C97),
-              Color(0xFF363795),
+              Color(0xFF0B132B), // Deep Dark Navy/OLED-friendly
+              Color(0xFF1C2541), // Rich Dark Slate
             ],
           ),
         ),
@@ -403,11 +427,12 @@ class _LoginScreenState extends State<LoginScreen> {
                   height: 120,
                   width: 120,
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: const Color(0xFF1E293B),
                     borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.white12, width: 1),
                     boxShadow: const [
                       BoxShadow(
-                        color: Colors.black26,
+                        color: Colors.black38,
                         blurRadius: 10,
                         offset: Offset(0, 5),
                       ),
@@ -421,7 +446,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       errorBuilder: (c, e, s) => const Icon(
                         Icons.security,
                         size: 70,
-                        color: Color(0xFF005C97),
+                        color: Color(0xFF4DA0FF),
                       ),
                     ),
                   ),
@@ -456,11 +481,12 @@ class _LoginScreenState extends State<LoginScreen> {
                   width: double.infinity,
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: const Color(0xFF1E293B), // Premium Slate/Indigo Dark card
                     borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.white10, width: 1),
                     boxShadow: const [
                       BoxShadow(
-                        color: Colors.black26,
+                        color: Colors.black45,
                         blurRadius: 12,
                         offset: Offset(0, 6),
                       ),
@@ -473,7 +499,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
-                          color: Color(0xFF005C97),
+                          color: Color(0xFF4DA0FF),
                         ),
                       ),
 
@@ -490,16 +516,17 @@ class _LoginScreenState extends State<LoginScreen> {
                           fontSize: 24,
                           letterSpacing: 8,
                           fontWeight: FontWeight.bold,
+                          color: Colors.white,
                         ),
                         onChanged: _login,
                         decoration: InputDecoration(
                           hintText: "••••",
                           counterText: "",
                           filled: true,
-                          fillColor: Colors.grey[100],
+                          fillColor: const Color(0xFF0F172A),
                           prefixIcon: const Icon(
                             Icons.lock,
-                            color: Color(0xFF005C97),
+                            color: Color(0xFF4DA0FF),
                           ),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
@@ -508,7 +535,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                             borderSide: const BorderSide(
-                              color: Color(0xFF005C97),
+                              color: Color(0xFF4DA0FF),
                               width: 2,
                             ),
                           ),

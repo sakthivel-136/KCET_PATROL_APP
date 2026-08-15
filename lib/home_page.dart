@@ -618,9 +618,7 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    bool isAvailable = widget.isMaster ||
-        (widget.canScan && _isWithinScanWindow() && (_scannedCount < _totalQrCount)) ||
-        _totalQrCount == 0;
+    bool isAvailable = _isWithinScanWindow() || _totalQrCount == 0;
     double progressPercent =
         _totalQrCount > 0 ? _scannedCount / _totalQrCount : 0.0;
     Color statusColor;
@@ -1089,74 +1087,82 @@ class _HomePageState extends State<HomePage> {
                       final guard = guards[index];
                       final gId = guard['security_id'];
                       
-                      // Find active allocation for this guard
-                      final currentAlloc = allocs.cast<Map<String, dynamic>?>().firstWhere(
-                        (a) => a != null && a['security_id'] == gId,
-                        orElse: () => null,
-                      );
-                      
-                      final currentShiftId = currentAlloc?['shift_id'];
-                      final currentShift = shifts.cast<Map<String, dynamic>?>().firstWhere(
-                        (s) => s != null && s['shift_id'] == currentShiftId,
-                        orElse: () => null,
-                      );
+                      // Find active allocations for this guard
+                      final guardAllocations = allocs.where((a) => a['security_id'] == gId).toList();
+                      final Set<String> assignedShiftIds = guardAllocations.map((a) => a['shift_id'].toString()).toSet();
 
                       return Card(
-                        margin: const EdgeInsets.symmetric(vertical: 4),
+                        margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        elevation: 2,
                         child: Padding(
-                          padding: const EdgeInsets.all(8.0),
+                          padding: const EdgeInsets.all(12.0),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                guard['security_name'] ?? 'Guard',
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                              ),
-                              Text("ID: $gId", style: const TextStyle(color: Colors.black54, fontSize: 12)),
-                              const SizedBox(height: 8),
                               Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  const Text("Shift: ", style: TextStyle(fontWeight: FontWeight.w500)),
                                   Expanded(
-                                    child: DropdownButton<String>(
-                                      isExpanded: true,
-                                      value: currentShiftId,
-                                      hint: const Text("No Shift Assigned"),
-                                      items: [
-                                        const DropdownMenuItem<String>(
-                                          value: null,
-                                          child: Text("Unassigned"),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          guard['security_name'] ?? 'Guard',
+                                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                                         ),
-                                        ...shifts.map((s) {
-                                          return DropdownMenuItem<String>(
-                                            value: s['shift_id'],
-                                            child: Text("${s['shift_name']} (${s['start_time']} - ${s['end_time']})"),
-                                          );
-                                        })
+                                        Text("ID: $gId", style: const TextStyle(color: Colors.black54, fontSize: 12)),
                                       ],
-                                      onChanged: (newShiftId) async {
-                                        // Update state inside dialog and DB
-                                        await _editGuardShift(gId, newShiftId);
-                                        
-                                        // Update local list
-                                        if (currentAlloc != null) {
-                                          if (newShiftId == null) {
-                                            allocs.remove(currentAlloc);
-                                          } else {
-                                            currentAlloc['shift_id'] = newShiftId;
-                                          }
-                                        } else if (newShiftId != null) {
-                                          allocs.add({
-                                            'security_id': gId,
-                                            'shift_id': newShiftId,
-                                          });
-                                        }
-                                        
-                                        setDialogState(() {});
-                                      },
+                                    ),
+                                  ),
+                                  Text(
+                                    assignedShiftIds.isEmpty ? "Unassigned" : "${assignedShiftIds.length} Shift(s)",
+                                    style: TextStyle(
+                                      color: assignedShiftIds.isEmpty ? Colors.red : Colors.green,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
                                     ),
                                   ),
                                 ],
+                              ),
+                              const Divider(height: 16),
+                              const Text("Assign Shifts:", style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
+                              const SizedBox(height: 4),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 4,
+                                children: shifts.map((s) {
+                                  final sId = s['shift_id'].toString();
+                                  final isChecked = assignedShiftIds.contains(sId);
+                                  return FilterChip(
+                                    label: Text("${s['shift_name']} (${s['start_time']} - ${s['end_time']})"),
+                                    selected: isChecked,
+                                    selectedColor: const Color(0xFF005C97).withOpacity(0.2),
+                                    checkmarkColor: const Color(0xFF005C97),
+                                    onSelected: (bool selected) async {
+                                      final updatedShiftIds = Set<String>.from(assignedShiftIds);
+                                      if (selected) {
+                                        updatedShiftIds.add(sId);
+                                      } else {
+                                        updatedShiftIds.remove(sId);
+                                      }
+
+                                      // Update DB
+                                      await _editGuardShifts(gId, updatedShiftIds.toList());
+
+                                      // Update local state list
+                                      allocs.removeWhere((a) => a['security_id'] == gId);
+                                      for (var id in updatedShiftIds) {
+                                        allocs.add({
+                                          'security_id': gId,
+                                          'shift_id': id,
+                                        });
+                                      }
+
+                                      setDialogState(() {});
+                                    },
+                                  );
+                                }).toList(),
                               ),
                             ],
                           ),
@@ -1184,7 +1190,7 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  Future<void> _editGuardShift(String securityId, String? shiftId) async {
+  Future<void> _editGuardShifts(String securityId, List<String> shiftIds) async {
     final client = Supabase.instance.client;
     try {
       // First delete any previous allocations for this guard
@@ -1193,21 +1199,23 @@ class _HomePageState extends State<HomePage> {
           .delete()
           .eq('security_id', securityId);
 
-      if (shiftId != null) {
-        // Insert the new shift allocation
-        await client.from('shift_allocations').insert({
+      if (shiftIds.isNotEmpty) {
+        // Insert new allocations for all checked shifts
+        final List<Map<String, dynamic>> inserts = shiftIds.map((sId) => {
           'security_id': securityId,
-          'shift_id': shiftId,
-          'allocation_date': '2099-12-31', // match your date structure
-        });
+          'shift_id': sId,
+          'allocation_date': '2099-12-31',
+        }).toList();
+
+        await client.from('shift_allocations').insert(inserts);
       }
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("Shift allocation saved successfully!"),
+            content: Text("Shift allocations saved successfully!"),
             backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
+            duration: Duration(seconds: 1),
           ),
         );
       }
@@ -1215,7 +1223,7 @@ class _HomePageState extends State<HomePage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text("Failed to update shift: $e"),
+            content: Text("Failed to update shifts: $e"),
             backgroundColor: Colors.red,
           ),
         );

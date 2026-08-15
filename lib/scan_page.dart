@@ -387,7 +387,7 @@ class _ScanningPageState extends State<ScanningPage> {
       return;
     }
 
-    final valid = widget.isMaster || _isValidTime();
+    final valid = _isValidTime();
 
     if (!valid) {
       _msg("OUTSIDE SCAN WINDOW", Colors.red);
@@ -442,6 +442,13 @@ class _ScanningPageState extends State<ScanningPage> {
         _msg('CANNOT GET LOCATION - SCAN FAILED', Colors.red);
         return;
       }
+
+      // Delete any previous status record (like MISSED) for this checkpoint and round slot to allow overwriting/updating
+      await Supabase.instance.client
+          .from('scanning_details')
+          .delete()
+          .eq('qr_id', p['qr_id'])
+          .eq('round_slot', _currentRound.toUtc().toIso8601String());
 
       await Supabase.instance.client.from('scanning_details').insert({
         'guard_name': widget.guardName,
@@ -712,93 +719,93 @@ class _ScanningPageState extends State<ScanningPage> {
 
                 const SizedBox(height: 20),
 
-                // LIST
+                // GRID
                 Expanded(
-                  child: ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 15),
+                  child: GridView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 3,
+                      crossAxisSpacing: 10,
+                      mainAxisSpacing: 10,
+                      childAspectRatio: 1.05,
+                    ),
                     itemCount: _checkpoints.length,
                     itemBuilder: (_, i) {
                       final p = _checkpoints[i];
                       final bool completed = p['completed'] == true;
                       final bool waitingDone = p['waiting_done'] == true;
                       final bool scannedOnce = p['scanned_once'] == true;
+                      
                       Color bg;
                       Color txt;
-                      String statusLabel;
+                      Widget icon;
+                      String statusText;
+
                       if (completed) {
-                        bg = Colors.green.shade600;
+                        bg = const Color(0xFF2E7D32); // Deep premium green
                         txt = Colors.white;
-                        statusLabel = 'Completed';
+                        icon = const Icon(Icons.check_circle, color: Colors.white, size: 24);
+                        statusText = "Done";
                       } else if (waitingDone) {
-                        bg = Colors.amber.shade600;
-                        txt = Colors.black87;
-                        statusLabel = 'Ready for final scan';
-                      } else if (scannedOnce) {
-                        bg = Colors.red.shade600;
+                        bg = const Color(0xFFEF6C00); // Darker amber
                         txt = Colors.white;
-                        statusLabel = 'First scan registered';
+                        icon = const Icon(Icons.play_circle_fill, color: Colors.white, size: 24);
+                        statusText = "Ready";
+                      } else if (scannedOnce) {
+                        bg = const Color(0xFFC62828); // Deep red
+                        txt = Colors.white;
+                        icon = Text(
+                          "${p['timer']}s",
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                        );
+                        statusText = "Waiting";
                       } else {
-                        bg = Colors.white;
-                        txt = Colors.black87;
-                        statusLabel = 'Tap once to start';
+                        bg = const Color(0xFF1E293B); // Dark slate grey for battery saving
+                        txt = Colors.white70;
+                        icon = Icon(Icons.radio_button_unchecked, color: Colors.grey.shade500, size: 24);
+                        statusText = "Pending";
                       }
+
                       return Container(
-                        margin: const EdgeInsets.only(bottom: 10),
-                        padding: const EdgeInsets.all(16),
+                        padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
                           color: bg,
                           borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: Colors.white12,
+                            width: 1,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.2),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            )
+                          ],
                         ),
                         child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    p['qr_name'] ?? "POINT ${i + 1}",
-                                    style: TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                      color: txt,
-                                    ),
-                                  ),
-                                ),
-                                if (completed)
-                                  const Icon(Icons.check_circle,
-                                      color: Colors.white)
-                                else if (waitingDone)
-                                  const Icon(Icons.play_arrow,
-                                      color: Colors.black)
-                                else if (scannedOnce)
-                                  const Icon(Icons.stop_circle,
-                                      color: Colors.white)
-                                else
-                                  Icon(
-                                    Icons.radio_button_unchecked,
-                                    color: Colors.grey.shade400,
-                                  ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
                             Text(
-                              statusLabel,
+                              p['qr_name'] ?? "POINT ${i + 1}",
+                              textAlign: TextAlign.center,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 fontSize: 13,
+                                fontWeight: FontWeight.bold,
                                 color: txt,
                               ),
                             ),
-                            if (p['timer'] > 0) ...[
-                              const SizedBox(height: 8),
-                              Text(
-                                "WAIT ${p['timer']}s",
-                                style: TextStyle(
-                                  color: txt,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                            icon,
+                            Text(
+                              statusText,
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: txt.withOpacity(0.8),
+                                fontWeight: FontWeight.w500,
                               ),
-                            ]
+                            ),
                           ],
                         ),
                       );
