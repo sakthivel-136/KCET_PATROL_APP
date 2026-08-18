@@ -146,9 +146,7 @@ class _ScanningPageState extends State<ScanningPage> {
 
       for (var e in scanData) {
         if (e['status'] == 'SUCCESS') {
-          final sQr = _norm(e['qr_id']);
-          final sPrefix = sQr.contains(':') ? sQr.split(':').first : sQr;
-          success.add(sPrefix);
+          success.add(_norm(e['qr_id']));
         }
       }
 
@@ -197,12 +195,11 @@ class _ScanningPageState extends State<ScanningPage> {
 
   Future<bool> _existsSuccess(String qr) async {
     try {
-      final prefix = qr.contains(':') ? qr.split(':').first : qr;
       final res = await Supabase.instance.client
           .from('scanning_details')
           .select('id')
           .eq('campus_code', widget.campusCode)
-          .or('qr_id.eq.$qr,qr_id.eq.$prefix')
+          .eq('qr_id', qr)
           .eq('round_slot', _currentRound.toUtc().toIso8601String())
           .eq('status', 'SUCCESS')
           .maybeSingle();
@@ -369,11 +366,7 @@ class _ScanningPageState extends State<ScanningPage> {
 
     if (qrId.isEmpty) return;
 
-    // The backend uses cryptographically signed QR codes (e.g., "1:a8b7c6d59f32e1").
-    // We match checkpoints by extracting the prefix before the colon (the integer ID).
-    final matchedId = qrId.contains(':') ? qrId.split(':').first : qrId;
-
-    final index = _checkpoints.indexWhere((p) => _norm(p['qr_id']) == matchedId);
+    final index = _checkpoints.indexWhere((p) => _norm(p['qr_id']) == qrId);
 
     if (index == -1) {
       _msg("UNKNOWN QR", Colors.orange);
@@ -381,7 +374,6 @@ class _ScanningPageState extends State<ScanningPage> {
     }
 
     final p = _checkpoints[index];
-    final matchedPrefix = _norm(p['qr_id']);
 
     // Already finished
     if (p['completed'] == true) {
@@ -390,7 +382,7 @@ class _ScanningPageState extends State<ScanningPage> {
     }
 
     // One at a time lock
-    if (_activeQrId != null && _activeQrId != matchedPrefix) {
+    if (_activeQrId != null && _activeQrId != qrId) {
       _msg("FINISH CURRENT QR", Colors.red);
       return;
     }
@@ -416,7 +408,6 @@ class _ScanningPageState extends State<ScanningPage> {
         return;
       }
 
-      // Lock current checkpoint using the prefix/ID
       _startTimer(index);
       return;
     }
@@ -429,13 +420,13 @@ class _ScanningPageState extends State<ScanningPage> {
         return;
       }
 
-      await _saveSuccess(p, qrId);
+      await _saveSuccess(p);
     }
   }
 
   // ================= SAVE SUCCESS =================
 
-  Future<void> _saveSuccess(Map p, String rawQrId) async {
+  Future<void> _saveSuccess(Map p) async {
     if (_isProcessing) return;
 
     setState(() => _isProcessing = true);
@@ -452,18 +443,16 @@ class _ScanningPageState extends State<ScanningPage> {
         return;
       }
 
-      // Delete any previous status record (like MISSED) for this checkpoint to allow overwriting/updating
-      final prefix = rawQrId.contains(':') ? rawQrId.split(':').first : rawQrId;
+      // Delete any previous status record (like MISSED) for this checkpoint and round slot to allow overwriting/updating
       await Supabase.instance.client
           .from('scanning_details')
           .delete()
-          .eq('campus_code', widget.campusCode)
-          .or('qr_id.eq.$rawQrId,qr_id.eq.$prefix')
+          .eq('qr_id', p['qr_id'])
           .eq('round_slot', _currentRound.toUtc().toIso8601String());
 
       await Supabase.instance.client.from('scanning_details').insert({
         'guard_name': widget.guardName,
-        'qr_id': rawQrId,
+        'qr_id': p['qr_id'],
         'qr_name': p['qr_name'],
         'lat': pos.latitude,
         'log': pos.longitude,
