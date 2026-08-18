@@ -217,7 +217,7 @@ class _ScanningPageState extends State<ScanningPage> {
 
   Future<bool> _isOnline() async {
     final result = await Connectivity().checkConnectivity();
-    return result != ConnectivityResult.none;
+    return !result.contains(ConnectivityResult.none);
   }
 
   Future<Position?> _getCurrentPosition() async {
