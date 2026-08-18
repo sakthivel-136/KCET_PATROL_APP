@@ -29,7 +29,7 @@ class ScanningPage extends StatefulWidget {
   State<ScanningPage> createState() => _ScanningPageState();
 }
 
-class _ScanningPageState extends State<ScanningPage> {
+class _ScanningPageState extends State<ScanningPage> with TickerProviderStateMixin {
   final MobileScannerController scannerController = MobileScannerController();
 
   List<Map<String, dynamic>> _checkpoints = [];
@@ -56,6 +56,10 @@ class _ScanningPageState extends State<ScanningPage> {
 
   DateTime? _lastScanTime; // cooldown
 
+  // ── Animation ──
+  late AnimationController _scanLineCtrl;
+  late Animation<double> _scanLineAnim;
+
   // ================= INIT =================
 
   @override
@@ -66,6 +70,11 @@ class _ScanningPageState extends State<ScanningPage> {
 
     final h = DateTime.now().hour;
     _torchOn = (h >= 18 || h < 6);
+
+    // Scan line sweep animation
+    _scanLineCtrl = AnimationController(vsync: this, duration: const Duration(seconds: 2))
+      ..repeat(reverse: true);
+    _scanLineAnim = CurvedAnimation(parent: _scanLineCtrl, curve: Curves.easeInOut);
 
     _initScanner();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -301,15 +310,24 @@ class _ScanningPageState extends State<ScanningPage> {
     if (!mounted) return;
 
     ScaffoldMessenger.of(context).clearSnackBars();
-
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         backgroundColor: c,
-        content: Text(
-          m,
-          style:
-              const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
-        ),
+        elevation: 8,
+        content: Row(children: [
+          Icon(
+            c == Colors.green ? Icons.check_circle_rounded
+              : c == Colors.orange ? Icons.warning_rounded
+              : Icons.error_rounded,
+            color: Colors.white, size: 20,
+          ),
+          const SizedBox(width: 10),
+          Expanded(child: Text(m, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white))),
+        ]),
+        duration: const Duration(seconds: 3),
       ),
     );
   }
@@ -596,224 +614,312 @@ class _ScanningPageState extends State<ScanningPage> {
 
   @override
   Widget build(BuildContext context) {
+    const bg1 = Color(0xFF0D47A1);
+    const bg2 = Color(0xFF001E62);
+    const primary = Color(0xFF0A74DA);
+
+    final scannedCount = _checkpoints.where((p) => p['completed'] == true).length;
+    final totalCount = _checkpoints.length;
+    final progress = totalCount > 0 ? scannedCount / totalCount : 0.0;
+
     return Scaffold(
-      backgroundColor: const Color(0xFF005C97),
+      extendBodyBehindAppBar: true,
+      backgroundColor: bg2,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: const Text("QR Patrol Scan"),
+        systemOverlayStyle: SystemUiOverlayStyle.light,
+        title: const Text("QR Patrol Scan",
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
         centerTitle: true,
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _toggleFlash,
-        backgroundColor: _torchOn ? Colors.yellow : Colors.white24,
-        child: Icon(
-          _torchOn ? Icons.flash_on : Icons.flash_off,
-          color: _torchOn ? Colors.black : Colors.white,
-        ),
+        iconTheme: const IconThemeData(color: Colors.white),
+        actions: [
+          IconButton(
+            icon: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              child: Icon(
+                _torchOn ? Icons.flash_on_rounded : Icons.flash_off_rounded,
+                key: ValueKey(_torchOn),
+                color: _torchOn ? Colors.yellow : Colors.white70,
+              ),
+            ),
+            onPressed: _toggleFlash,
+            tooltip: "Toggle Flashlight",
+          ),
+          const SizedBox(width: 4),
+        ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: Colors.white))
-          : Column(
-              children: [
-                const SizedBox(height: 16),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.08),
-                          blurRadius: 6,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _currentRoundLabel.isEmpty
-                              ? 'Current Scan'
-                              : _currentRoundLabel,
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF005C97),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          _windowLabel(),
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: Colors.black54,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          _scanAvailable
-                              ? 'SCAN WINDOW OPEN'
-                              : 'WAITING FOR SCAN WINDOW',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: _scanAvailable ? Colors.green : Colors.red,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
+          ? Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [bg1, bg2]),
+              ),
+              child: const Center(child: CircularProgressIndicator(color: Colors.white)),
+            )
+          : Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [bg1, bg2]),
+              ),
+              child: SafeArea(
+                child: Column(
+                  children: [
+                    const SizedBox(height: 10),
 
-                // CAMERA
-                SizedBox(
-                  height: 200,
-                  width: 200,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: Stack(
-                      children: [
-                        MobileScanner(
-                          controller: scannerController,
-                          onDetect: _onScan,
+                    // ── Info Card ──────────────────────────────────────────
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.09),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: Colors.white.withOpacity(0.15)),
                         ),
-                        if (_overlayTimer > 0)
-                          Positioned.fill(
-                            child: Container(
-                              color: Colors.black.withOpacity(0.5),
+                        child: Row(children: [
+                          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text(
+                              _currentRoundLabel.isEmpty ? 'Current Scan' : _currentRoundLabel,
+                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(_windowLabel(),
+                              style: TextStyle(fontSize: 12, color: Colors.white.withOpacity(0.6))),
+                          ])),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: _scanAvailable
+                                  ? const Color(0xFF00C853).withOpacity(0.2)
+                                  : Colors.red.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: _scanAvailable ? const Color(0xFF00C853) : Colors.red, width: 1),
+                            ),
+                            child: Row(mainAxisSize: MainAxisSize.min, children: [
+                              Icon(
+                                _scanAvailable ? Icons.lock_open_rounded : Icons.lock_rounded,
+                                size: 13,
+                                color: _scanAvailable ? const Color(0xFF00C853) : Colors.redAccent,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                _scanAvailable ? 'OPEN' : 'CLOSED',
+                                style: TextStyle(
+                                  fontSize: 11, fontWeight: FontWeight.bold,
+                                  color: _scanAvailable ? const Color(0xFF00C853) : Colors.redAccent,
+                                ),
+                              ),
+                            ]),
+                          ),
+                        ]),
+                      ),
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    // ── Camera Frame ───────────────────────────────────────
+                    Center(
+                      child: Container(
+                        width: 220, height: 220,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(color: primary.withOpacity(0.35), blurRadius: 30, spreadRadius: 4),
+                          ],
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(20),
+                          child: Stack(
+                            children: [
+                              // Camera feed
+                              MobileScanner(controller: scannerController, onDetect: _onScan),
+
+                              // Scan line sweep
+                              if (_overlayTimer == 0)
+                                AnimatedBuilder(
+                                  animation: _scanLineAnim,
+                                  builder: (_, __) => Positioned(
+                                    top: _scanLineAnim.value * 200,
+                                    left: 0, right: 0,
+                                    child: Container(
+                                      height: 2,
+                                      decoration: BoxDecoration(
+                                        gradient: LinearGradient(colors: [
+                                          Colors.transparent,
+                                          const Color(0xFF00C6FF).withOpacity(0.8),
+                                          Colors.transparent,
+                                        ]),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+
+                              // Countdown overlay
+                              if (_overlayTimer > 0)
+                                Positioned.fill(
+                                  child: Container(
+                                    color: Colors.black.withOpacity(0.65),
+                                    child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                                      SizedBox(
+                                        width: 90, height: 90,
+                                        child: Stack(
+                                          alignment: Alignment.center,
+                                          children: [
+                                            CircularProgressIndicator(
+                                              value: _totalTime > 0 ? _overlayTimer / _totalTime : 0,
+                                              strokeWidth: 6,
+                                              backgroundColor: Colors.white12,
+                                              valueColor: const AlwaysStoppedAnimation(Color(0xFFFFAB00)),
+                                            ),
+                                            Text("$_overlayTimer",
+                                              style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      const Text("Hold position...",
+                                        style: TextStyle(color: Colors.white70, fontSize: 12)),
+                                    ]),
+                                  ),
+                                ),
+
+                              // Corner brackets
+                              Positioned(top: 12, left: 12, child: _corner(topLeft: true)),
+                              Positioned(top: 12, right: 12, child: _corner(topRight: true)),
+                              Positioned(bottom: 12, left: 12, child: _corner(bottomLeft: true)),
+                              Positioned(bottom: 12, right: 12, child: _corner(bottomRight: true)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    // ── Progress Bar ───────────────────────────────────────
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Row(children: [
+                        Expanded(
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: LinearProgressIndicator(
+                              value: progress,
+                              minHeight: 7,
+                              backgroundColor: Colors.white12,
+                              valueColor: const AlwaysStoppedAnimation(Color(0xFF00C853)),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Text("$scannedCount/$totalCount",
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                      ]),
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    // ── Checkpoint Grid ────────────────────────────────────
+                    Expanded(
+                      child: GridView.builder(
+                        physics: const BouncingScrollPhysics(),
+                        padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 3,
+                          crossAxisSpacing: 10,
+                          mainAxisSpacing: 10,
+                          childAspectRatio: 1.05,
+                        ),
+                        itemCount: _checkpoints.length,
+                        itemBuilder: (_, i) {
+                          final p = _checkpoints[i];
+                          final bool completed  = p['completed']   == true;
+                          final bool waitingDone = p['waiting_done'] == true;
+                          final bool scannedOnce = p['scanned_once'] == true;
+
+                          Color  bg; Color txt; Widget icon; String label;
+                          List<Color> grad;
+
+                          if (completed) {
+                            grad = [const Color(0xFF1B5E20), const Color(0xFF2E7D32)];
+                            txt  = Colors.white;
+                            icon = const Icon(Icons.check_circle_rounded, color: Colors.white, size: 26);
+                            label = "Done";
+                          } else if (waitingDone) {
+                            grad = [const Color(0xFFE65100), const Color(0xFFEF6C00)];
+                            txt  = Colors.white;
+                            icon = const Icon(Icons.play_circle_fill, color: Colors.white, size: 26);
+                            label = "Scan Now!";
+                          } else if (scannedOnce) {
+                            grad = [const Color(0xFFB71C1C), const Color(0xFFC62828)];
+                            txt  = Colors.white;
+                            icon = Text("${p['timer']}s",
+                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18));
+                            label = "Waiting";
+                          } else {
+                            grad = [const Color(0xFF1A237E), const Color(0xFF283593)];
+                            txt  = Colors.white60;
+                            icon = Icon(Icons.qr_code_rounded, color: Colors.white38, size: 26);
+                            label = "Pending";
+                          }
+                          bg = grad.first;
+
+                          return AnimatedContainer(
+                            duration: const Duration(milliseconds: 350),
+                            curve: Curves.easeInOut,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft, end: Alignment.bottomRight, colors: grad),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: Colors.white.withOpacity(completed ? 0.25 : 0.08), width: 1),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: (completed ? const Color(0xFF00C853) : bg).withOpacity(0.3),
+                                  blurRadius: completed ? 12 : 4,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ],
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(8),
                               child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
+                                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                                 children: [
                                   Text(
-                                    "$_overlayTimer",
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 48,
-                                      fontWeight: FontWeight.bold,
-                                    ),
+                                    p['qr_name'] ?? "PT ${i + 1}",
+                                    textAlign: TextAlign.center,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: txt),
                                   ),
-                                  const SizedBox(height: 10),
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                                    child: LinearProgressIndicator(
-                                      value: _overlayTimer / _totalTime,
-                                      backgroundColor: Colors.white24,
-                                      valueColor: const AlwaysStoppedAnimation(
-                                          Colors.yellow),
-                                    ),
-                                  ),
+                                  icon,
+                                  Text(label,
+                                    style: TextStyle(
+                                      fontSize: 9, fontWeight: FontWeight.w600,
+                                      color: txt.withOpacity(0.75), letterSpacing: 0.4)),
                                 ],
                               ),
                             ),
-                          ),
-                      ],
+                          );
+                        },
+                      ),
                     ),
-                  ),
+                  ],
                 ),
-
-                const SizedBox(height: 20),
-
-                // GRID
-                Expanded(
-                  child: GridView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 3,
-                      crossAxisSpacing: 10,
-                      mainAxisSpacing: 10,
-                      childAspectRatio: 1.05,
-                    ),
-                    itemCount: _checkpoints.length,
-                    itemBuilder: (_, i) {
-                      final p = _checkpoints[i];
-                      final bool completed = p['completed'] == true;
-                      final bool waitingDone = p['waiting_done'] == true;
-                      final bool scannedOnce = p['scanned_once'] == true;
-                      
-                      Color bg;
-                      Color txt;
-                      Widget icon;
-                      String statusText;
-
-                      if (completed) {
-                        bg = const Color(0xFF2E7D32); // Deep premium green
-                        txt = Colors.white;
-                        icon = const Icon(Icons.check_circle, color: Colors.white, size: 24);
-                        statusText = "Done";
-                      } else if (waitingDone) {
-                        bg = const Color(0xFFEF6C00); // Darker amber
-                        txt = Colors.white;
-                        icon = const Icon(Icons.play_circle_fill, color: Colors.white, size: 24);
-                        statusText = "Ready";
-                      } else if (scannedOnce) {
-                        bg = const Color(0xFFC62828); // Deep red
-                        txt = Colors.white;
-                        icon = Text(
-                          "${p['timer']}s",
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
-                        );
-                        statusText = "Waiting";
-                      } else {
-                        bg = const Color(0xFF1E293B); // Dark slate grey for battery saving
-                        txt = Colors.white70;
-                        icon = Icon(Icons.radio_button_unchecked, color: Colors.grey.shade500, size: 24);
-                        statusText = "Pending";
-                      }
-
-                      return Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: bg,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: Colors.white12,
-                            width: 1,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.2),
-                              blurRadius: 4,
-                              offset: const Offset(0, 2),
-                            )
-                          ],
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              p['qr_name'] ?? "POINT ${i + 1}",
-                              textAlign: TextAlign.center,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                                color: txt,
-                              ),
-                            ),
-                            icon,
-                            Text(
-                              statusText,
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: txt.withOpacity(0.8),
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
+              ),
             ),
+    );
+  }
+
+  Widget _corner({bool topLeft=false, bool topRight=false, bool bottomLeft=false, bool bottomRight=false}) {
+    return SizedBox(
+      width: 22, height: 22,
+      child: CustomPaint(
+        painter: _CornerPainter(
+          topLeft: topLeft, topRight: topRight,
+          bottomLeft: bottomLeft, bottomRight: bottomRight,
+        ),
+      ),
     );
   }
 
@@ -822,7 +928,34 @@ class _ScanningPageState extends State<ScanningPage> {
   @override
   void dispose() {
     _syncTimer?.cancel();
+    _scanLineCtrl.dispose();
     scannerController.dispose();
     super.dispose();
   }
+}
+
+// ── Corner bracket painter ──────────────────────────────────────────────────
+class _CornerPainter extends CustomPainter {
+  final bool topLeft, topRight, bottomLeft, bottomRight;
+  _CornerPainter({this.topLeft=false, this.topRight=false, this.bottomLeft=false, this.bottomRight=false});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = const Color(0xFF00C6FF)
+      ..strokeWidth = 3
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+
+    const len = 18.0;
+    final w = size.width; final h = size.height;
+
+    if (topLeft)     { canvas.drawLine(Offset(0,len), Offset.zero, paint); canvas.drawLine(Offset.zero, Offset(len,0), paint); }
+    if (topRight)    { canvas.drawLine(Offset(w-len,0), Offset(w,0), paint); canvas.drawLine(Offset(w,0), Offset(w,len), paint); }
+    if (bottomLeft)  { canvas.drawLine(Offset(0,h-len), Offset(0,h), paint); canvas.drawLine(Offset(0,h), Offset(len,h), paint); }
+    if (bottomRight) { canvas.drawLine(Offset(w-len,h), Offset(w,h), paint); canvas.drawLine(Offset(w,h), Offset(w,h-len), paint); }
+  }
+
+  @override
+  bool shouldRepaint(_) => false;
 }
