@@ -8,14 +8,14 @@ class PatrolRound {
 
   PatrolRound(this.time, this.label, this.round);
 }
-
 List<PatrolRound> buildPatrolRounds(DateTime now) {
   final localDay = DateTime(now.year, now.month, now.day);
   final cycleStart = localDay;
 
+  // Generate 12 rounds spaced 2 hours apart (e.g. 12:00 AM, 2:00 AM, 4:00 AM, etc.)
   final slots = List<DateTime>.generate(
-    24,
-    (index) => DateTime(cycleStart.year, cycleStart.month, cycleStart.day, index, 0),
+    12,
+    (index) => DateTime(cycleStart.year, cycleStart.month, cycleStart.day, index * 2, 0),
   );
 
   return List<PatrolRound>.generate(
@@ -29,11 +29,13 @@ List<PatrolRound> buildPatrolRounds(DateTime now) {
 }
 
 DateTime getScanWindowStart(DateTime roundStart) {
-  return roundStart.subtract(const Duration(minutes: 10));
+  // Opening window exactly at 45 minutes past the first hour (e.g., 6:45 AM for 6:00 AM round)
+  return roundStart.add(const Duration(minutes: 45));
 }
 
 DateTime getScanWindowEnd(DateTime roundStart) {
-  return roundStart.add(const Duration(minutes: 20));
+  // Closing window exactly at 30 minutes past the second hour (e.g., 7:30 AM for 6:00 AM round)
+  return roundStart.add(const Duration(hours: 1, minutes: 30));
 }
 
 bool isWithinPatrolScanWindow(DateTime now, DateTime roundStart) {

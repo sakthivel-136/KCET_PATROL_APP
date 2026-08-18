@@ -13,7 +13,7 @@ import 'package:kcet_security_rounds/main.dart';
 void main() {
   testWidgets('App builds smoke test', (WidgetTester tester) async {
     // Build our app and trigger a frame.
-    await tester.pumpWidget(const KCET Security RoundsApp());
+    await tester.pumpWidget(const KcetSecurityRoundsApp());
 
     // Verify the app renders by checking that the login screen is present.
     expect(find.byType(LoginScreen), findsOneWidget);
