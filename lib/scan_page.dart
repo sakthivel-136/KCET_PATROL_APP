@@ -146,7 +146,9 @@ class _ScanningPageState extends State<ScanningPage> {
 
       for (var e in scanData) {
         if (e['status'] == 'SUCCESS') {
-          success.add(_norm(e['qr_id']));
+          final sQr = _norm(e['qr_id']);
+          final sPrefix = sQr.contains(':') ? sQr.split(':').first : sQr;
+          success.add(sPrefix);
         }
       }
 
