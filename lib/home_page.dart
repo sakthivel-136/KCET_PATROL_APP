@@ -820,14 +820,6 @@ class _HomePageState extends State<HomePage> {
                         color: Colors.black54,
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      _nextRoundTime,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: Colors.black45,
-                      ),
-                    ),
                   ],
                 ),
               ),
