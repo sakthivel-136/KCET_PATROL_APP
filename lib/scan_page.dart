@@ -195,11 +195,12 @@ class _ScanningPageState extends State<ScanningPage> {
 
   Future<bool> _existsSuccess(String qr) async {
     try {
+      final prefix = qr.contains(':') ? qr.split(':').first : qr;
       final res = await Supabase.instance.client
           .from('scanning_details')
           .select('id')
           .eq('campus_code', widget.campusCode)
-          .eq('qr_id', qr)
+          .or('qr_id.eq.$qr,qr_id.eq.$prefix')
           .eq('round_slot', _currentRound.toUtc().toIso8601String())
           .eq('status', 'SUCCESS')
           .maybeSingle();
@@ -449,11 +450,13 @@ class _ScanningPageState extends State<ScanningPage> {
         return;
       }
 
-      // Delete any previous status record (like MISSED) for this checkpoint and round slot to allow overwriting/updating
+      // Delete any previous status record (like MISSED) for this checkpoint to allow overwriting/updating
+      final prefix = rawQrId.contains(':') ? rawQrId.split(':').first : rawQrId;
       await Supabase.instance.client
           .from('scanning_details')
           .delete()
-          .eq('qr_id', p['qr_id'])
+          .eq('campus_code', widget.campusCode)
+          .or('qr_id.eq.$rawQrId,qr_id.eq.$prefix')
           .eq('round_slot', _currentRound.toUtc().toIso8601String());
 
       await Supabase.instance.client.from('scanning_details').insert({
