@@ -366,7 +366,11 @@ class _ScanningPageState extends State<ScanningPage> {
 
     if (qrId.isEmpty) return;
 
-    final index = _checkpoints.indexWhere((p) => _norm(p['qr_id']) == qrId);
+    // The backend uses cryptographically signed QR codes (e.g., "1:a8b7c6d59f32e1").
+    // We match checkpoints by extracting the prefix before the colon (the integer ID).
+    final matchedId = qrId.contains(':') ? qrId.split(':').first : qrId;
+
+    final index = _checkpoints.indexWhere((p) => _norm(p['qr_id']) == matchedId);
 
     if (index == -1) {
       _msg("UNKNOWN QR", Colors.orange);
@@ -374,6 +378,7 @@ class _ScanningPageState extends State<ScanningPage> {
     }
 
     final p = _checkpoints[index];
+    final matchedPrefix = _norm(p['qr_id']);
 
     // Already finished
     if (p['completed'] == true) {
@@ -382,7 +387,7 @@ class _ScanningPageState extends State<ScanningPage> {
     }
 
     // One at a time lock
-    if (_activeQrId != null && _activeQrId != qrId) {
+    if (_activeQrId != null && _activeQrId != matchedPrefix) {
       _msg("FINISH CURRENT QR", Colors.red);
       return;
     }
@@ -408,6 +413,7 @@ class _ScanningPageState extends State<ScanningPage> {
         return;
       }
 
+      // Lock current checkpoint using the prefix/ID
       _startTimer(index);
       return;
     }
@@ -420,13 +426,13 @@ class _ScanningPageState extends State<ScanningPage> {
         return;
       }
 
-      await _saveSuccess(p);
+      await _saveSuccess(p, qrId);
     }
   }
 
   // ================= SAVE SUCCESS =================
 
-  Future<void> _saveSuccess(Map p) async {
+  Future<void> _saveSuccess(Map p, String rawQrId) async {
     if (_isProcessing) return;
 
     setState(() => _isProcessing = true);
@@ -452,7 +458,7 @@ class _ScanningPageState extends State<ScanningPage> {
 
       await Supabase.instance.client.from('scanning_details').insert({
         'guard_name': widget.guardName,
-        'qr_id': p['qr_id'],
+        'qr_id': rawQrId,
         'qr_name': p['qr_name'],
         'lat': pos.latitude,
         'log': pos.longitude,
