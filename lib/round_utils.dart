@@ -8,11 +8,11 @@ class PatrolRound {
 
   PatrolRound(this.time, this.label, this.round);
 }
+// Generate 12 rounds spaced 2 hours apart (e.g. 12:00 AM, 2:00 AM, 4:00 AM, etc.)
 List<PatrolRound> buildPatrolRounds(DateTime now) {
   final localDay = DateTime(now.year, now.month, now.day);
   final cycleStart = localDay;
 
-  // Generate 12 rounds spaced 2 hours apart (e.g. 12:00 AM, 2:00 AM, 4:00 AM, etc.)
   final slots = List<DateTime>.generate(
     12,
     (index) => DateTime(cycleStart.year, cycleStart.month, cycleStart.day, index * 2, 0),
@@ -29,12 +29,12 @@ List<PatrolRound> buildPatrolRounds(DateTime now) {
 }
 
 DateTime getScanWindowStart(DateTime roundStart) {
-  // Opening window exactly at 45 minutes past the first hour (e.g., 6:45 AM for 6:00 AM round)
+  // Opens 45 minutes past the round start hour (e.g. 6:45 AM for 6:00 AM round)
   return roundStart.add(const Duration(minutes: 45));
 }
 
 DateTime getScanWindowEnd(DateTime roundStart) {
-  // Closing window exactly at 30 minutes past the second hour (e.g., 7:30 AM for 6:00 AM round)
+  // Closes 30 minutes past the next hour (e.g. 7:30 AM for 6:00 AM round)
   return roundStart.add(const Duration(hours: 1, minutes: 30));
 }
 
