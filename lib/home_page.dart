@@ -7,57 +7,54 @@ import 'dart:math' as math;
 import 'round_utils.dart';
 import 'scan_page.dart';
 
-// ─── Theme Constants ────────────────────────────────────────────────────────
-const _kPrimary   = Color(0xFF0A74DA);
-const _kPrimaryDk = Color(0xFF003A8C);
-const _kAccent    = Color(0xFF00C6FF);
-const _kSurface   = Colors.white;
-const _kBg1       = Color(0xFF0D47A1);
-const _kBg2       = Color(0xFF001E62);
+// ─── Palette ─────────────────────────────────────────────────────────────────
+const _kBg1    = Color(0xFF070B1F);
+const _kBg2    = Color(0xFF0D1B4B);
+const _kCard   = Color(0xFF111836);
+const _kAccent = Color(0xFF2979FF);
+const _kCyan   = Color(0xFF00E5FF);
+const _kGreen  = Color(0xFF00E676);
+const _kOrange = Color(0xFFFFAB00);
+const _kRed    = Color(0xFFFF1744);
 
 class HomePage extends StatefulWidget {
   final String guardName;
   final String campusCode;
   final bool isMaster;
   final bool canScan;
-  const HomePage({
-    super.key,
-    required this.guardName,
-    required this.campusCode,
-    required this.isMaster,
-    required this.canScan,
-  });
-
+  const HomePage({super.key, required this.guardName, required this.campusCode,
+      required this.isMaster, required this.canScan});
   @override
   State<HomePage> createState() => _HomePageState();
 }
 
 class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
+  // ── Data ──────────────────────────────────────────────────────────────────
   String _campusName = "Loading...";
   String _selectedCampusCode = "";
-  int _totalQrCount = 0;
-  int _scannedCount = 0;
-  bool _isLoadingStatus = true;
-  String _currentRound = "Calculating...";
+  int    _totalQrCount  = 0;
+  int    _scannedCount  = 0;
+  bool   _isLoadingStatus = true;
+  String _currentRound  = "Calculating...";
   String _nextRoundTime = "";
-  List<Map<String, dynamic>> _campuses = [];
-  List<Map<String, dynamic>> _roundSlots = [];
-  String _patrolStatus = "In Progress";
+  List<Map<String,dynamic>> _campuses   = [];
+  List<Map<String,dynamic>> _roundSlots = [];
+  String    _patrolStatus    = "In Progress";
   DateTime? _currentRoundStart;
   DateTime? _scanWindowOpen;
   DateTime? _scanWindowClose;
-
   bool _isRefreshing = false;
   Timer? _refreshDebouncer;
 
-  // ── Animation controllers ──────────────────────────────────────────────────
+  // ── Animations ─────────────────────────────────────────────────────────────
   late AnimationController _pulseCtrl;
   late AnimationController _fadeCtrl;
   late AnimationController _progressCtrl;
-  late Animation<double> _pulseAnim;
-  late Animation<double> _fadeAnim;
-  late Animation<double> _progressAnim;
-
+  late AnimationController _ringCtrl;
+  late Animation<double>   _pulseAnim;
+  late Animation<double>   _fadeAnim;
+  late Animation<double>   _progressAnim;
+  late Animation<double>   _ringAnim;
   double _targetProgress = 0;
 
   @override
@@ -65,49 +62,40 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     super.initState();
     _selectedCampusCode = widget.campusCode == "ADMIN" ? "KCET01" : widget.campusCode;
 
-    // Pulse (scan button breathing)
-    _pulseCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1800))
+    _pulseCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 2000))
       ..repeat(reverse: true);
-    _pulseAnim = Tween<double>(begin: 1.0, end: 1.08).animate(
-      CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut),
-    );
+    _pulseAnim = Tween<double>(begin: 1.0, end: 1.10).animate(
+      CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut));
 
-    // Fade-in for page
-    _fadeCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
-    _fadeAnim  = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut);
+    _fadeCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 700));
+    _fadeAnim = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut);
     _fadeCtrl.forward();
 
-    // Animated progress bar
-    _progressCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 800));
-    _progressAnim = Tween<double>(begin: 0, end: 0).animate(
-      CurvedAnimation(parent: _progressCtrl, curve: Curves.easeInOut),
-    );
+    _progressCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200));
+    _progressAnim = const AlwaysStoppedAnimation(0);
+
+    _ringCtrl = AnimationController(vsync: this, duration: const Duration(seconds: 20))..repeat();
+    _ringAnim = Tween<double>(begin: 0, end: 2 * math.pi).animate(_ringCtrl);
 
     _fetchInitialData();
   }
 
   @override
   void dispose() {
-    _pulseCtrl.dispose();
-    _fadeCtrl.dispose();
-    _progressCtrl.dispose();
+    _pulseCtrl.dispose(); _fadeCtrl.dispose();
+    _progressCtrl.dispose(); _ringCtrl.dispose();
     _refreshDebouncer?.cancel();
     super.dispose();
   }
 
-  void _animateProgress(double newTarget) {
-    final oldTarget = _targetProgress;
-    _targetProgress = newTarget;
-    _progressAnim = Tween<double>(begin: oldTarget, end: newTarget).animate(
-      CurvedAnimation(parent: _progressCtrl, curve: Curves.easeInOut),
-    );
-    _progressCtrl
-      ..reset()
-      ..forward();
+  void _animateProgress(double v) {
+    final old = _targetProgress; _targetProgress = v;
+    _progressAnim = Tween<double>(begin: old, end: v).animate(
+      CurvedAnimation(parent: _progressCtrl, curve: Curves.easeInOutCubic));
+    _progressCtrl..reset()..forward();
   }
 
-  // ── Data ──────────────────────────────────────────────────────────────────
-
+  // ── Data Fetching ──────────────────────────────────────────────────────────
   Future<void> _fetchInitialData() async {
     try {
       await Future.wait([
@@ -115,51 +103,38 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         _fetchCampusName().timeout(const Duration(seconds: 10), onTimeout: () {}),
         _refreshPatrolStatus().timeout(const Duration(seconds: 10), onTimeout: () {}),
       ], eagerError: false);
-    } catch (e) {
-      debugPrint('Initial data fetch error: $e');
-    }
+    } catch (_) {}
     _updateRoundInfo();
     Timer.periodic(const Duration(minutes: 1), (t) { if (mounted) _updateRoundInfo(); });
   }
 
   Future<void> _fetchCampuses() async {
     try {
-      final data = await Supabase.instance.client.from('campuses').select('campus_code, campus_name');
-      if (mounted) setState(() => _campuses = List<Map<String, dynamic>>.from(data));
-    } catch (e) { debugPrint("Error fetching campuses: $e"); }
+      final d = await Supabase.instance.client.from('campuses').select('campus_code, campus_name');
+      if (mounted) setState(() => _campuses = List<Map<String,dynamic>>.from(d));
+    } catch (_) {}
   }
 
   Future<void> _fetchCampusName() async {
     try {
-      if (_selectedCampusCode == "ADMIN") {
-        if (mounted) setState(() => _campusName = "Administrator");
-        return;
-      }
-      final data = await Supabase.instance.client
-          .from('campuses').select('campus_name')
-          .eq('campus_code', _selectedCampusCode).single();
-      if (mounted) setState(() => _campusName = data['campus_name']);
-    } catch (e) {
-      if (mounted) setState(() => _campusName = "Unknown Campus");
-    }
+      if (_selectedCampusCode == "ADMIN") { if (mounted) setState(() => _campusName = "Administrator"); return; }
+      final d = await Supabase.instance.client.from('campuses')
+          .select('campus_name').eq('campus_code', _selectedCampusCode).single();
+      if (mounted) setState(() => _campusName = d['campus_name']);
+    } catch (_) { if (mounted) setState(() => _campusName = "Unknown Campus"); }
   }
 
-  Map<String, dynamic> _getCurrentRoundSlot() => getCurrentPatrolRound(DateTime.now());
-
   void _updateRoundInfo() {
-    final roundInfo = _getCurrentRoundSlot();
-    final currentSlot = roundInfo['current'] as PatrolRound;
-    final nextSlot    = roundInfo['next']    as PatrolRound;
-    final roundTime   = roundInfo['currentRoundTime'] as DateTime;
-    if (mounted) {
-      setState(() {
-        _currentRound    = "Round ${currentSlot.round}";
-        _nextRoundTime   = "Next: ${nextSlot.label}";
-        _currentRoundStart = roundTime;
-        _scanWindowOpen  = roundInfo['scanWindowOpen']  as DateTime;
-        _scanWindowClose = roundInfo['scanWindowClose'] as DateTime;
-      });
-    }
+    final info = getCurrentPatrolRound(DateTime.now());
+    final cur  = info['current'] as PatrolRound;
+    final nxt  = info['next']    as PatrolRound;
+    if (mounted) setState(() {
+      _currentRound     = "Round ${cur.round}";
+      _nextRoundTime    = "Next: ${nxt.label}";
+      _currentRoundStart = info['currentRoundTime'] as DateTime;
+      _scanWindowOpen   = info['scanWindowOpen']    as DateTime;
+      _scanWindowClose  = info['scanWindowClose']   as DateTime;
+    });
   }
 
   bool _isWithinScanWindow() {
@@ -179,242 +154,110 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     _isRefreshing = true;
     if (!mounted) { _isRefreshing = false; return; }
     setState(() => _isLoadingStatus = true);
-
-    final client  = Supabase.instance.client;
-    final now     = DateTime.now();
-    final info    = _getCurrentRoundSlot();
-    final roundStart = info['currentRoundTime'] as DateTime;
-    final roundEnd   = info['scanWindowClose']  as DateTime;
-    final windowClosed = now.isAfter(roundEnd);
-
     try {
-      final totalRes = await client.from('qr').select('qr_id')
+      final info       = getCurrentPatrolRound(DateTime.now());
+      final roundStart = info['currentRoundTime'] as DateTime;
+      final roundEnd   = info['scanWindowClose']  as DateTime;
+      final closed     = DateTime.now().isAfter(roundEnd);
+      final totalRes   = await Supabase.instance.client.from('qr').select('qr_id')
           .eq('campus_code', _selectedCampusCode).eq('status', 'active');
-      final scannedRes = await client.from('scanning_details').select('qr_id, status')
-          .eq('campus_code', _selectedCampusCode)
+      final scannedRes = await Supabase.instance.client.from('scanning_details')
+          .select('qr_id, status').eq('campus_code', _selectedCampusCode)
           .eq('round_slot', roundStart.toUtc().toIso8601String());
-
-      final uniqueScans = <String>{};
+      final unique = <String>{};
       for (var s in scannedRes) {
-        if (_isSuccessStatus(s['status'])) uniqueScans.add(s['qr_id'].toString());
+        if (_isSuccessStatus(s['status'])) unique.add(s['qr_id'].toString());
       }
-
       String status = "In Progress";
-      if (uniqueScans.length >= totalRes.length && totalRes.length > 0) {
-        status = "Success";
-      } else if (windowClosed) {
-        status = "Missed";
-      }
-
+      if (unique.length >= totalRes.length && totalRes.length > 0) status = "Success";
+      else if (closed) status = "Missed";
       if (mounted) {
-        final newProgress = totalRes.length > 0 ? uniqueScans.length / totalRes.length : 0.0;
+        final prog = totalRes.length > 0 ? unique.length / totalRes.length : 0.0;
         setState(() {
           _totalQrCount    = totalRes.length;
-          _scannedCount    = uniqueScans.length;
+          _scannedCount    = unique.length;
           _patrolStatus    = status;
           _isLoadingStatus = false;
           _currentRoundStart = roundStart;
         });
-        _animateProgress(newProgress);
+        _animateProgress(prog);
       }
-    } catch (e) {
-      debugPrint("Error in _refreshPatrolStatus: $e");
-      if (mounted) setState(() => _isLoadingStatus = false);
-    } finally {
-      _isRefreshing = false;
-    }
+    } catch (_) { if (mounted) setState(() => _isLoadingStatus = false); }
+    finally { _isRefreshing = false; }
   }
 
-  // ── Round Report ─────────────────────────────────────────────────────────
-
+  // ── Report Data ───────────────────────────────────────────────────────────
   Future<void> _generateRoundSlots() async {
     setState(() => _isLoadingStatus = true);
     try {
-      final now    = DateTime.now();
-      final client = Supabase.instance.client;
+      final now   = DateTime.now();
+      final info  = getCurrentPatrolRound(now);
+      final cur   = info['current'] as PatrolRound;
       final rounds = buildPatrolRounds(now);
-      final currentInfo  = getCurrentPatrolRound(now);
-      final currentRound = currentInfo['current'] as PatrolRound;
-      final currentIndex = rounds.indexWhere((r) => r.time == currentRound.time);
-
-      final qrData = await client.from('qr').select('qr_id')
+      final curIdx = rounds.indexWhere((r) => r.round == cur.round);
+      final qrData = await Supabase.instance.client.from('qr').select('qr_id')
           .eq('campus_code', _selectedCampusCode).eq('status', 'active');
-      final int totalQrCount = qrData.length;
-
-      List<Map<String, dynamic>> slots = [];
-      if (totalQrCount == 0) {
-        for (var r in rounds) {
-          slots.add({'time': r.time, 'label': r.label, 'round': 'Round ${r.round}', 'status': 'no_qr'});
-        }
-      } else {
-        for (var i = 0; i < rounds.length; i++) {
-          final round    = rounds[i];
-          final slotTime = round.time;
-          String status;
-          List<dynamic> scannedData = [];
-
-          if (i < currentIndex) {
-            scannedData = await client.from('scanning_details').select('qr_id, status, guard_name')
-                .eq('campus_code', _selectedCampusCode)
-                .eq('round_slot', slotTime.toUtc().toIso8601String());
-            final seenQrIds = <String>{};
-            for (var scan in scannedData) {
-              if (_isSuccessStatus(scan['status'])) seenQrIds.add(scan['qr_id'].toString());
-            }
-            status = seenQrIds.length >= totalQrCount ? 'success' : 'missed';
-          } else if (i == currentIndex) {
-            status = 'current';
-          } else {
-            status = 'future';
+      final total = qrData.length;
+      List<Map<String,dynamic>> slots = [];
+      for (var i = 0; i < rounds.length; i++) {
+        final r = rounds[i];
+        String status; int scanned = 0; String guard = '';
+        List<dynamic> scannedData = [];
+        if (total == 0) {
+          status = 'no_qr';
+        } else if (i < curIdx) {
+          scannedData = await Supabase.instance.client.from('scanning_details')
+              .select('qr_id, status, guard_name, scan_time')
+              .eq('campus_code', _selectedCampusCode)
+              .eq('round_slot', r.time.toUtc().toIso8601String());
+          final seen = <String>{};
+          for (var s in scannedData) {
+            if (_isSuccessStatus(s['status'])) seen.add(s['qr_id'].toString());
           }
-
-          slots.add({
-            'time':   slotTime,
-            'label':  round.label,
-            'round':  'Round ${round.round}',
-            'status': status,
-            'guard_name': status == 'success'
-                ? (scannedData.isNotEmpty && scannedData.first['guard_name'] != null)
-                    ? scannedData.first['guard_name'] : "Completed"
-                : (status == 'missed')
-                    ? (scannedData.isNotEmpty && scannedData.first['guard_name'] != null)
-                        ? scannedData.first['guard_name'] : "No guard"
-                    : (status == 'current') ? "In progress" : "Not started",
-          });
+          scanned = seen.length;
+          status  = seen.length >= total ? 'success' : 'missed';
+          guard   = scannedData.isNotEmpty ? (scannedData.first['guard_name'] ?? '') : '';
+        } else if (i == curIdx) {
+          status = 'current';
+          scanned = _scannedCount;
+          guard   = widget.guardName;
+        } else {
+          status = 'future';
         }
+        slots.add({
+          'time': r.time, 'label': r.label,
+          'round': 'Round ${r.round}', 'status': status,
+          'scanned': scanned, 'total': total,
+          'guard': guard.isNotEmpty ? guard : (status == 'future' ? 'Upcoming' : 'No record'),
+          'scanData': scannedData,
+        });
       }
-
       if (mounted) setState(() { _roundSlots = slots; _isLoadingStatus = false; });
-    } catch (e) {
-      debugPrint("Error generating round slots: $e");
-      if (mounted) setState(() => _isLoadingStatus = false);
-    }
+    } catch (_) { if (mounted) setState(() => _isLoadingStatus = false); }
   }
 
-  void _showRoundDetails(Map<String, dynamic> slot) {
-    final status = slot['status'] as String;
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text(slot['round'], style: const TextStyle(fontWeight: FontWeight.bold)),
-        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          _detailRow(Icons.access_time, "Time", slot['label']),
-          _detailRow(Icons.flag, "Status", status.toUpperCase()),
-          _detailRow(Icons.person, "Guard", slot['guard_name'] ?? '—'),
-        ]),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text("Close"))],
-      ),
-    );
-  }
-
-  Widget _detailRow(IconData icon, String label, String value) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 6),
-    child: Row(children: [
-      Icon(icon, size: 18, color: _kPrimary),
-      const SizedBox(width: 8),
-      Text("$label: ", style: const TextStyle(fontWeight: FontWeight.w600)),
-      Expanded(child: Text(value, style: const TextStyle(color: Colors.black54))),
-    ]),
-  );
-
-  void _showRoundReportDialog() {
-    _generateRoundSlots().then((_) {
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        builder: (_) => Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Row(children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(color: _kPrimary.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
-                  child: const Icon(Icons.assessment, color: _kPrimary),
-                ),
-                const SizedBox(width: 12),
-                Expanded(child: Text("Patrol Report — $_campusName",
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
-                IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
-              ]),
-              const Divider(height: 20),
-              SizedBox(
-                height: 380,
-                child: _isLoadingStatus
-                  ? const Center(child: CircularProgressIndicator())
-                  : _roundSlots.isEmpty
-                    ? const Center(child: Text("No rounds available"))
-                    : ListView.separated(
-                        itemCount: _roundSlots.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 8),
-                        itemBuilder: (_, index) {
-                          final slot = _roundSlots[index];
-                          final status = slot['status'] as String;
-                          Color badge; IconData badgeIcon; String badgeText;
-                          switch (status) {
-                            case 'success': badge = Colors.green; badgeIcon = Icons.check_circle; badgeText = 'Done'; break;
-                            case 'missed':  badge = Colors.red;   badgeIcon = Icons.cancel;       badgeText = 'Missed'; break;
-                            case 'current': badge = _kPrimary;   badgeIcon = Icons.play_circle;  badgeText = 'Active'; break;
-                            case 'no_qr':   badge = Colors.grey; badgeIcon = Icons.remove_circle; badgeText = 'No QR'; break;
-                            default:        badge = Colors.grey.shade400; badgeIcon = Icons.schedule; badgeText = 'Future';
-                          }
-                          return GestureDetector(
-                            onTap: () => _showRoundDetails(slot),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                              decoration: BoxDecoration(
-                                color: badge.withOpacity(0.06),
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(color: badge.withOpacity(0.25)),
-                              ),
-                              child: Row(children: [
-                                Icon(badgeIcon, color: badge, size: 22),
-                                const SizedBox(width: 12),
-                                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                  Text(slot['round'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                                  Text(slot['label'], style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
-                                ])),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                  decoration: BoxDecoration(color: badge.withOpacity(0.15), borderRadius: BorderRadius.circular(20)),
-                                  child: Text(badgeText, style: TextStyle(color: badge, fontWeight: FontWeight.bold, fontSize: 11)),
-                                ),
-                              ]),
-                            ),
-                          );
-                        },
-                      ),
-              ),
-            ]),
-          ),
-        ),
-      );
-    });
-  }
-
-  void _showCampusSelectionDialog() {
-    showDialog(
-      context: context,
-      builder: (_) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const Text("Select Campus", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            ..._campuses.map((c) => ListTile(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              tileColor: _selectedCampusCode == c['campus_code'] ? _kPrimary.withOpacity(0.08) : null,
+  // ── Campus Dialog ─────────────────────────────────────────────────────────
+  void _showCampusPicker() {
+    showModalBottomSheet(
+      context: context, isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _GlassSheet(
+        title: "Select Campus",
+        icon: Icons.location_city_rounded,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: _campuses.map((c) {
+            final sel = _selectedCampusCode == c['campus_code'];
+            return ListTile(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              tileColor: sel ? _kAccent.withOpacity(0.12) : null,
               leading: CircleAvatar(
-                backgroundColor: _kPrimary.withOpacity(0.1),
-                child: const Icon(Icons.location_city, color: _kPrimary, size: 20),
+                backgroundColor: _kAccent.withOpacity(0.15),
+                child: Icon(Icons.business_rounded, color: _kAccent, size: 18),
               ),
-              title: Text(c['campus_name'], style: const TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: Text("Code: ${c['campus_code']}", style: const TextStyle(fontSize: 12)),
-              trailing: _selectedCampusCode == c['campus_code']
-                  ? const Icon(Icons.check_circle, color: _kPrimary) : null,
+              title: Text(c['campus_name'], style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+              subtitle: Text(c['campus_code'], style: const TextStyle(color: Colors.white38, fontSize: 12)),
+              trailing: sel ? Icon(Icons.check_circle_rounded, color: _kGreen) : null,
               onTap: () {
                 setState(() {
                   _selectedCampusCode = c['campus_code'];
@@ -424,61 +267,131 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                 Navigator.pop(context);
                 _refreshPatrolStatus();
               },
-            )).toList(),
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
-          ]),
+            );
+          }).toList(),
         ),
       ),
     );
   }
 
-  // ── Build ─────────────────────────────────────────────────────────────────
+  // ── Extraordinary Report ──────────────────────────────────────────────────
+  void _showReport() {
+    _generateRoundSlots().then((_) {
+      if (!mounted) return;
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => _ReportSheet(
+          roundSlots: _roundSlots,
+          campusName: _campusName,
+          totalQr: _totalQrCount,
+          scanned: _scannedCount,
+          isLoading: _isLoadingStatus,
+        ),
+      );
+    });
+  }
 
+  // ── Shift Management ──────────────────────────────────────────────────────
+  Future<void> _showShiftManagement() async {
+    final client = Supabase.instance.client;
+    showDialog(context: context, barrierDismissible: false,
+      builder: (_) => const _LoadingDialog(message: "Loading shift data..."));
+    try {
+      final users  = await client.from('security_users').select('security_id, security_name, role').eq('role', 'Guard');
+      final shifts = await client.from('shifts').select('shift_id, shift_name, start_time, end_time');
+      final allocs = await client.from('shift_allocations').select('security_id, shift_id');
+      if (!mounted) return;
+      Navigator.pop(context);
+      final guards    = List<Map<String,dynamic>>.from(users);
+      final shiftList = List<Map<String,dynamic>>.from(shifts);
+      final allocList = List<Map<String,dynamic>>.from(allocs);
+      showModalBottomSheet(
+        context: context, isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => _ShiftSheet(
+          guards: guards, shifts: shiftList, allocs: allocList,
+          onSave: _editGuardShifts,
+        ),
+      );
+    } catch (_) {
+      if (mounted) Navigator.pop(context);
+    }
+  }
+
+  Future<void> _editGuardShifts(String sid, List<String> shiftIds) async {
+    try {
+      await Supabase.instance.client.from('shift_allocations').delete().eq('security_id', sid);
+      if (shiftIds.isNotEmpty) {
+        await Supabase.instance.client.from('shift_allocations').insert(
+          shiftIds.map((s) => {'security_id': sid, 'shift_id': s, 'allocation_date': '2099-12-31'}).toList());
+      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text("Shifts updated!"), backgroundColor: _kGreen,
+        behavior: SnackBarBehavior.floating,
+        duration: Duration(seconds: 1),
+      ));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text("Failed: $e"), backgroundColor: _kRed,
+        behavior: SnackBarBehavior.floating));
+    }
+  }
+
+  // ── Build ─────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-    final isAvailable = _isWithinScanWindow() || _totalQrCount == 0;
+    final isAvailable = _isWithinScanWindow() || (_totalQrCount == 0 && widget.isMaster);
+    final double prog  = _totalQrCount > 0 ? _scannedCount / _totalQrCount : 0.0;
 
-    Color statusColor;
-    IconData statusIcon;
+    Color statusColor; IconData statusIcon;
     switch (_patrolStatus) {
-      case "Success": statusColor = const Color(0xFF00C853); statusIcon = Icons.check_circle; break;
-      case "Missed":  statusColor = const Color(0xFFFF1744); statusIcon = Icons.cancel; break;
-      default:        statusColor = const Color(0xFFFFAB00); statusIcon = Icons.timelapse;
+      case "Success": statusColor = _kGreen;  statusIcon = Icons.check_circle_rounded; break;
+      case "Missed":  statusColor = _kRed;    statusIcon = Icons.cancel_rounded; break;
+      default:        statusColor = _kOrange; statusIcon = Icons.timelapse_rounded;
     }
 
-    String scanWindowStatus = "";
+    String windowText = "";
     if (_scanWindowOpen != null && _scanWindowClose != null) {
       final now = DateTime.now();
-      if (now.isBefore(_scanWindowOpen!)) {
-        scanWindowStatus = "Opens ${DateFormat('hh:mm a').format(_scanWindowOpen!)}";
-      } else if (now.isAfter(_scanWindowClose!)) {
-        scanWindowStatus = "Closed ${DateFormat('hh:mm a').format(_scanWindowClose!)}";
-      } else {
-        scanWindowStatus = "Closes ${DateFormat('hh:mm a').format(_scanWindowClose!)}";
-      }
+      if (now.isBefore(_scanWindowOpen!))
+        windowText = "Opens ${DateFormat('hh:mm a').format(_scanWindowOpen!)}";
+      else if (now.isAfter(_scanWindowClose!))
+        windowText = "Closed ${DateFormat('hh:mm a').format(_scanWindowClose!)}";
+      else
+        windowText = "Closes ${DateFormat('hh:mm a').format(_scanWindowClose!)}";
     }
 
     return Scaffold(
       extendBodyBehindAppBar: true,
+      backgroundColor: _kBg1,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
+        backgroundColor: Colors.transparent, elevation: 0,
         systemOverlayStyle: SystemUiOverlayStyle.light,
-        title: const Text("Security Rounds",
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
         automaticallyImplyLeading: false,
-        centerTitle: true,
+        title: Row(children: [
+          AnimatedBuilder(
+            animation: _ringAnim,
+            builder: (_, __) => Transform.rotate(
+              angle: _ringAnim.value,
+              child: const Icon(Icons.radar_rounded, color: _kCyan, size: 20),
+            ),
+          ),
+          const SizedBox(width: 8),
+          const Text("Security Rounds",
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 17)),
+        ]),
         actions: [
-          if (widget.isMaster)
-            _appBarBtn(Icons.assessment_rounded, _showRoundReportDialog),
-          _appBarBtn(Icons.refresh_rounded, () {
+          if (widget.isMaster) _topBtn(Icons.assessment_rounded, _showReport),
+          _topBtn(Icons.refresh_rounded, () {
             _refreshDebouncer?.cancel();
-            _refreshDebouncer = Timer(const Duration(milliseconds: 500), () {
+            _refreshDebouncer = Timer(const Duration(milliseconds: 400), () {
               HapticFeedback.lightImpact();
               _refreshPatrolStatus();
             });
           }),
-          _appBarBtn(Icons.logout_rounded, () => Navigator.pushReplacementNamed(context, '/')),
+          _topBtn(Icons.logout_rounded, () => Navigator.pushReplacementNamed(context, '/')),
         ],
       ),
       body: FadeTransition(
@@ -486,218 +399,234 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         child: Container(
           decoration: const BoxDecoration(
             gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [_kBg1, _kBg2],
+              begin: Alignment.topLeft, end: Alignment.bottomRight,
+              colors: [_kBg2, _kBg1],
             ),
           ),
           child: SafeArea(
             child: SingleChildScrollView(
               physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-              child: Column(
-                children: [
-                  const SizedBox(height: 4),
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),
+              child: Column(children: [
 
-                  // ── Header Card ──────────────────────────────────────────
-                  _glassCard(
-                    child: Row(children: [
+                // ── Header Card ────────────────────────────────────────────
+                _glassCard(child: Row(children: [
+                  GestureDetector(
+                    onTap: widget.isMaster ? _showCampusPicker : null,
+                    child: Container(
+                      width: 52, height: 52,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF1565C0), _kCyan],
+                          begin: Alignment.topLeft, end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [BoxShadow(color: _kAccent.withOpacity(0.4), blurRadius: 12)],
+                      ),
+                      child: const Icon(Icons.shield_rounded, color: Colors.white, size: 28),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(_campusName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                    const SizedBox(height: 2),
+                    Row(children: [
+                      const Icon(Icons.person_rounded, size: 13, color: Colors.white38),
+                      const SizedBox(width: 4),
+                      Text(widget.guardName, style: const TextStyle(fontSize: 12, color: Colors.white38)),
+                    ]),
+                  ])),
+                  Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                    if (widget.isMaster)
+                      _statusChip("ADMIN", Colors.purpleAccent, Icons.admin_panel_settings_rounded)
+                    else if (windowText.isNotEmpty)
+                      _statusChip(windowText,
+                        _isWithinScanWindow() ? _kGreen : _kOrange,
+                        _isWithinScanWindow() ? Icons.lock_open_rounded : Icons.lock_clock_rounded),
+                    if (widget.isMaster) ...[
+                      const SizedBox(height: 6),
                       GestureDetector(
-                        onTap: widget.isMaster ? _showCampusSelectionDialog : null,
+                        onTap: _showShiftManagement,
                         child: Container(
-                          width: 48, height: 48,
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [_kPrimary, _kAccent],
-                              begin: Alignment.topLeft, end: Alignment.bottomRight,
-                            ),
-                            borderRadius: BorderRadius.circular(14),
+                            color: Colors.white.withOpacity(0.06),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: Colors.white12),
                           ),
-                          child: const Icon(Icons.shield_rounded, color: Colors.white, size: 26),
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(_campusName,
-                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
-                          maxLines: 1, overflow: TextOverflow.ellipsis),
-                        const SizedBox(height: 2),
-                        Text("Guard: ${widget.guardName}",
-                          style: TextStyle(fontSize: 12, color: Colors.white.withOpacity(0.65))),
-                      ])),
-                      if (widget.isMaster) ...[
-                        _chipBadge("ADMIN", Colors.purple, Icons.admin_panel_settings),
-                        IconButton(
-                          icon: const Icon(Icons.group_rounded, color: Colors.white70),
-                          onPressed: _showShiftManagementDialog,
-                          tooltip: "Manage Shifts",
-                        ),
-                      ] else if (scanWindowStatus.isNotEmpty)
-                        _chipBadge(
-                          scanWindowStatus,
-                          _isWithinScanWindow() ? const Color(0xFF00C853) : Colors.orange,
-                          _isWithinScanWindow() ? Icons.lock_open : Icons.lock_clock,
-                        ),
-                    ]),
-                  ),
-
-                  const SizedBox(height: 14),
-
-                  // ── Clock Card ───────────────────────────────────────────
-                  _glassCard(
-                    child: Column(children: [
-                      StreamBuilder(
-                        stream: Stream.periodic(const Duration(seconds: 1)),
-                        builder: (_, __) => Text(
-                          DateFormat('hh:mm:ss a').format(DateTime.now()),
-                          style: const TextStyle(
-                            fontSize: 38, fontWeight: FontWeight.w200,
-                            letterSpacing: 3, color: Colors.white,
-                            fontFeatures: [FontFeature.tabularFigures()],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(colors: [_kPrimary.withOpacity(0.6), _kAccent.withOpacity(0.4)]),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: Colors.white24),
-                          ),
-                          child: Text(_currentRound,
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-                        ),
-                      ]),
-                      const SizedBox(height: 8),
-                      if (_scanWindowOpen != null && _scanWindowClose != null)
-                        Text(
-                          "${DateFormat('hh:mm a').format(_scanWindowOpen!)}  →  ${DateFormat('hh:mm a').format(_scanWindowClose!)}",
-                          style: TextStyle(fontSize: 13, color: Colors.white.withOpacity(0.7)),
-                        ),
-                      const SizedBox(height: 4),
-                      Text(_nextRoundTime,
-                        style: TextStyle(fontSize: 12, color: Colors.white.withOpacity(0.45))),
-                    ]),
-                  ),
-
-                  const SizedBox(height: 14),
-
-                  // ── Progress Card ────────────────────────────────────────
-                  _glassCard(
-                    child: Column(children: [
-                      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                        const Text("Current Patrol",
-                          style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w500)),
-                        _isLoadingStatus
-                          ? const SizedBox(width: 16, height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                          : Row(children: [
-                              Icon(statusIcon, color: statusColor, size: 14),
-                              const SizedBox(width: 4),
-                              Text(_patrolStatus,
-                                style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 12)),
-                            ]),
-                      ]),
-                      const SizedBox(height: 14),
-                      if (!_isLoadingStatus) ...[
-                        Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                          Text("$_scannedCount",
-                            style: const TextStyle(fontSize: 42, fontWeight: FontWeight.bold, color: Colors.white, height: 1)),
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 6, left: 4),
-                            child: Text("/$_totalQrCount scans",
-                              style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 14)),
-                          ),
-                        ]),
-                        const SizedBox(height: 12),
-                        AnimatedBuilder(
-                          animation: _progressAnim,
-                          builder: (_, __) => Column(children: [
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(10),
-                              child: LinearProgressIndicator(
-                                value: _progressAnim.value,
-                                minHeight: 8,
-                                backgroundColor: Colors.white12,
-                                valueColor: AlwaysStoppedAnimation<Color>(statusColor),
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: Text(
-                                "${(_progressAnim.value * 100).toInt()}%",
-                                style: TextStyle(color: statusColor, fontSize: 11, fontWeight: FontWeight.bold),
-                              ),
-                            ),
+                          child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                            Icon(Icons.group_rounded, size: 12, color: Colors.white54),
+                            SizedBox(width: 4),
+                            Text("Shifts", style: TextStyle(fontSize: 11, color: Colors.white54)),
                           ]),
                         ),
-                      ] else
-                        const Center(child: Padding(padding: EdgeInsets.all(8),
-                          child: CircularProgressIndicator(color: Colors.white70))),
-                    ]),
-                  ),
+                      ),
+                    ],
+                  ]),
+                ])),
 
-                  const SizedBox(height: 32),
+                const SizedBox(height: 12),
 
-                  // ── Scan Button ──────────────────────────────────────────
-                  GestureDetector(
-                    onTap: () async {
-                      HapticFeedback.mediumImpact();
-                      if (isAvailable) {
-                        await Navigator.push(context, _slideRoute(ScanningPage(
-                          guardName: widget.guardName,
-                          campusCode: _selectedCampusCode,
-                          isMaster: widget.isMaster,
-                        )));
-                        _refreshDebouncer?.cancel();
-                        _refreshDebouncer = Timer(const Duration(milliseconds: 500), _refreshPatrolStatus);
-                      } else {
-                        HapticFeedback.heavyImpact();
-                        ScaffoldMessenger.of(context)
-                          ..clearSnackBars()
-                          ..showSnackBar(SnackBar(
-                            behavior: SnackBarBehavior.floating,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                            backgroundColor: const Color(0xFFD32F2F),
-                            content: Row(children: [
-                              const Icon(Icons.lock_clock, color: Colors.white),
-                              const SizedBox(width: 10),
-                              Expanded(child: Text(
-                                widget.isMaster ? "No QR codes to scan." : "SCAN WINDOW $scanWindowStatus",
-                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
-                              )),
-                            ]),
-                            duration: const Duration(seconds: 3),
-                          ));
-                      }
-                    },
-                    child: isAvailable
-                      ? ScaleTransition(
-                          scale: _pulseAnim,
-                          child: _buildScanBtn(isAvailable),
-                        )
-                      : _buildScanBtn(isAvailable),
-                  ),
-
-                  const SizedBox(height: 14),
-
-                  AnimatedDefaultTextStyle(
-                    duration: const Duration(milliseconds: 300),
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: isAvailable ? Colors.white : Colors.white38,
-                      letterSpacing: 0.5,
+                // ── Clock + Round Card ─────────────────────────────────────
+                _glassCard(child: Column(children: [
+                  StreamBuilder(
+                    stream: Stream.periodic(const Duration(seconds: 1)),
+                    builder: (_, __) => Text(
+                      DateFormat('hh:mm:ss a').format(DateTime.now()),
+                      style: const TextStyle(
+                        fontSize: 40, fontWeight: FontWeight.w200,
+                        letterSpacing: 3, color: Colors.white,
+                        fontFeatures: [FontFeature.tabularFigures()],
+                      ),
                     ),
-                    child: Text(isAvailable ? "Tap to Scan QR Codes" : "Scanning Not Available"),
                   ),
+                  const SizedBox(height: 4),
+                  StreamBuilder(
+                    stream: Stream.periodic(const Duration(seconds: 1)),
+                    builder: (_, __) => Text(
+                      DateFormat('EEEE, d MMM yyyy').format(DateTime.now()),
+                      style: const TextStyle(fontSize: 12, color: Colors.white38),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    _roundPill(_currentRound, _kAccent),
+                    const SizedBox(width: 8),
+                    if (_scanWindowOpen != null && _scanWindowClose != null)
+                      _roundPill(
+                        "${DateFormat('hh:mm a').format(_scanWindowOpen!)} – ${DateFormat('hh:mm a').format(_scanWindowClose!)}",
+                        Colors.white24,
+                      ),
+                  ]),
+                  const SizedBox(height: 6),
+                  Text(_nextRoundTime,
+                    style: const TextStyle(fontSize: 11, color: Colors.white24)),
+                ])),
 
-                  const SizedBox(height: 24),
-                ],
-              ),
+                const SizedBox(height: 12),
+
+                // ── Stats Row ──────────────────────────────────────────────
+                Row(children: [
+                  _statBox("Total QR", "$_totalQrCount", Icons.qr_code_rounded, Colors.white24),
+                  const SizedBox(width: 10),
+                  _statBox("Scanned", "$_scannedCount", Icons.check_circle_rounded, _kGreen),
+                  const SizedBox(width: 10),
+                  _statBox("Left", "${_totalQrCount - _scannedCount}", Icons.pending_rounded, _kOrange),
+                ]),
+
+                const SizedBox(height: 12),
+
+                // ── Progress Card ──────────────────────────────────────────
+                _glassCard(child: Column(children: [
+                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                    const Text("Patrol Progress", style: TextStyle(color: Colors.white60, fontSize: 13, fontWeight: FontWeight.w500)),
+                    _isLoadingStatus
+                      ? const SizedBox(width: 16, height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: _kCyan))
+                      : Row(mainAxisSize: MainAxisSize.min, children: [
+                          Icon(statusIcon, color: statusColor, size: 14),
+                          const SizedBox(width: 5),
+                          Text(_patrolStatus, style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 12)),
+                        ]),
+                  ]),
+                  const SizedBox(height: 16),
+                  if (!_isLoadingStatus)
+                    Row(children: [
+                      // Radial gauge
+                      AnimatedBuilder(
+                        animation: _progressAnim,
+                        builder: (_, __) => SizedBox(
+                          width: 72, height: 72,
+                          child: CustomPaint(
+                            painter: _RadialGaugePainter(
+                              progress: _progressAnim.value,
+                              color: statusColor,
+                            ),
+                            child: Center(
+                              child: Text(
+                                "${(_progressAnim.value * 100).toInt()}%",
+                                style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 14),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 18),
+                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text("$_scannedCount of $_totalQrCount checkpoints",
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                        const SizedBox(height: 10),
+                        AnimatedBuilder(
+                          animation: _progressAnim,
+                          builder: (_, __) => ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: LinearProgressIndicator(
+                              value: _progressAnim.value,
+                              minHeight: 8,
+                              backgroundColor: Colors.white10,
+                              valueColor: AlwaysStoppedAnimation<Color>(statusColor),
+                            ),
+                          ),
+                        ),
+                      ])),
+                    ])
+                  else
+                    const Padding(padding: EdgeInsets.all(12),
+                      child: CircularProgressIndicator(color: _kCyan, strokeWidth: 3)),
+                ])),
+
+                const SizedBox(height: 28),
+
+                // ── Scan Button ───────────────────────────────────────────
+                GestureDetector(
+                  onTap: () async {
+                    HapticFeedback.mediumImpact();
+                    if (isAvailable) {
+                      await Navigator.push(context, _slideRoute(ScanningPage(
+                        guardName: widget.guardName,
+                        campusCode: _selectedCampusCode,
+                        isMaster: widget.isMaster,
+                      )));
+                      _refreshDebouncer?.cancel();
+                      _refreshDebouncer = Timer(const Duration(milliseconds: 400), _refreshPatrolStatus);
+                    } else {
+                      HapticFeedback.heavyImpact();
+                      ScaffoldMessenger.of(context)
+                        ..clearSnackBars()
+                        ..showSnackBar(SnackBar(
+                          behavior: SnackBarBehavior.floating,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          backgroundColor: _kRed,
+                          margin: const EdgeInsets.all(16),
+                          content: Row(children: [
+                            const Icon(Icons.lock_clock_rounded, color: Colors.white),
+                            const SizedBox(width: 10),
+                            Expanded(child: Text(
+                              widget.isMaster ? "No QR codes to scan." : "SCAN WINDOW $windowText",
+                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                            )),
+                          ]),
+                          duration: const Duration(seconds: 3),
+                        ));
+                    }
+                  },
+                  child: isAvailable
+                    ? ScaleTransition(scale: _pulseAnim, child: _buildScanBtn(true))
+                    : _buildScanBtn(false),
+                ),
+                const SizedBox(height: 12),
+                AnimatedDefaultTextStyle(
+                  duration: const Duration(milliseconds: 300),
+                  style: TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.w600, letterSpacing: 0.5,
+                    color: isAvailable ? Colors.white : Colors.white24,
+                  ),
+                  child: Text(isAvailable ? "Tap to Start Patrol Scan" : "Scan Not Available"),
+                ),
+
+                const SizedBox(height: 16),
+              ]),
             ),
           ),
         ),
@@ -705,65 +634,75 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildScanBtn(bool available) {
-    return Container(
-      width: 130, height: 130,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: LinearGradient(
-          begin: Alignment.topLeft, end: Alignment.bottomRight,
-          colors: available
-            ? [const Color(0xFF1E88E5), const Color(0xFF00C6FF)]
-            : [const Color(0xFF424242), const Color(0xFF616161)],
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: (available ? _kPrimary : Colors.black).withOpacity(0.45),
-            blurRadius: 28, spreadRadius: 2, offset: const Offset(0, 8),
+  Widget _buildScanBtn(bool active) {
+    return Stack(alignment: Alignment.center, children: [
+      if (active)
+        AnimatedBuilder(animation: _pulseCtrl, builder: (_, __) => Container(
+          width: 148 + (_pulseCtrl.value * 12),
+          height: 148 + (_pulseCtrl.value * 12),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: _kAccent.withOpacity(0.06 * (1 - _pulseCtrl.value)),
           ),
-          if (available)
+        )),
+      Container(
+        width: 140, height: 140,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: LinearGradient(
+            begin: Alignment.topLeft, end: Alignment.bottomRight,
+            colors: active
+              ? [const Color(0xFF1565C0), const Color(0xFF0D47A1)]
+              : [const Color(0xFF2D2D2D), const Color(0xFF1A1A1A)],
+          ),
+          boxShadow: [
             BoxShadow(
-              color: _kAccent.withOpacity(0.25),
-              blurRadius: 50, spreadRadius: 5,
+              color: (active ? _kAccent : Colors.black).withOpacity(0.5),
+              blurRadius: 36, spreadRadius: 4, offset: const Offset(0, 8),
             ),
-        ],
+            if (active) BoxShadow(color: _kCyan.withOpacity(0.15), blurRadius: 60, spreadRadius: 8),
+          ],
+          border: Border.all(
+            color: active ? _kAccent.withOpacity(0.4) : Colors.white10, width: 2),
+        ),
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Icon(
+            active ? Icons.qr_code_scanner_rounded : Icons.lock_rounded,
+            size: 50, color: Colors.white,
+          ),
+          const SizedBox(height: 4),
+          Text(active ? "SCAN" : "LOCKED",
+            style: TextStyle(
+              fontSize: 10, fontWeight: FontWeight.bold,
+              color: Colors.white.withOpacity(active ? 0.8 : 0.3),
+              letterSpacing: 1.5,
+            )),
+        ]),
       ),
-      child: Icon(
-        available ? Icons.qr_code_scanner_rounded : Icons.lock_rounded,
-        size: 58, color: Colors.white,
-      ),
-    );
+    ]);
   }
 
-  Widget _glassCard({required Widget child}) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.15)),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 20, offset: const Offset(0, 6)),
-        ],
-      ),
-      child: child,
-    );
-  }
-
-  Widget _appBarBtn(IconData icon, VoidCallback onTap) => IconButton(
-    icon: Icon(icon, color: Colors.white),
-    onPressed: onTap,
-    splashRadius: 22,
+  Widget _glassCard({required Widget child}) => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.all(18),
+    decoration: BoxDecoration(
+      color: _kCard.withOpacity(0.9),
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: Colors.white.withOpacity(0.08)),
+      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 20, offset: const Offset(0, 6))],
+    ),
+    child: child,
   );
 
-  Widget _chipBadge(String label, Color color, IconData icon) => Container(
-    margin: const EdgeInsets.only(right: 4),
+  Widget _topBtn(IconData icon, VoidCallback cb) => IconButton(
+    icon: Icon(icon, color: Colors.white70), onPressed: cb, splashRadius: 22);
+
+  Widget _statusChip(String label, Color color, IconData icon) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
     decoration: BoxDecoration(
-      color: color.withOpacity(0.2),
+      color: color.withOpacity(0.15),
       borderRadius: BorderRadius.circular(20),
-      border: Border.all(color: color.withOpacity(0.5)),
+      border: Border.all(color: color.withOpacity(0.4)),
     ),
     child: Row(mainAxisSize: MainAxisSize.min, children: [
       Icon(icon, size: 11, color: color),
@@ -772,123 +711,513 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     ]),
   );
 
-  PageRoute _slideRoute(Widget page) => PageRouteBuilder(
-    pageBuilder: (_, anim, __) => page,
-    transitionsBuilder: (_, anim, __, child) => SlideTransition(
-      position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
-          .animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
-      child: child,
+  Widget _roundPill(String label, Color color) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+    decoration: BoxDecoration(
+      color: color.withOpacity(0.15),
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: color.withOpacity(0.3)),
     ),
-    transitionDuration: const Duration(milliseconds: 350),
+    child: Text(label, style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
   );
 
-  // ── Shift Management ───────────────────────────────────────────────────────
+  Widget _statBox(String label, String value, IconData icon, Color color) => Expanded(
+    child: Container(
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      decoration: BoxDecoration(
+        color: _kCard.withOpacity(0.9),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, color: color, size: 22),
+        const SizedBox(height: 6),
+        Text(value, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 20)),
+        const SizedBox(height: 2),
+        Text(label, style: const TextStyle(color: Colors.white38, fontSize: 11)),
+      ]),
+    ),
+  );
 
-  Future<void> _showShiftManagementDialog() async {
-    final client = Supabase.instance.client;
-    showDialog(context: context, barrierDismissible: false, builder: (_) => const AlertDialog(
-      content: Row(children: [CircularProgressIndicator(), SizedBox(width: 16), Text("Loading...")]),
-    ));
-    try {
-      final usersRes  = await client.from('security_users').select('security_id, security_name, role').eq('role', 'Guard');
-      final shiftsRes = await client.from('shifts').select('shift_id, shift_name, start_time, end_time');
-      final allocsRes = await client.from('shift_allocations').select('security_id, shift_id');
-      if (!mounted) return;
-      Navigator.of(context).pop();
+  PageRoute _slideRoute(Widget page) => PageRouteBuilder(
+    pageBuilder: (_, a, __) => page,
+    transitionsBuilder: (_, a, __, child) => SlideTransition(
+      position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
+          .animate(CurvedAnimation(parent: a, curve: Curves.easeOutCubic)),
+      child: child,
+    ),
+    transitionDuration: const Duration(milliseconds: 380),
+  );
+}
 
-      final guards = List<Map<String, dynamic>>.from(usersRes);
-      final shifts = List<Map<String, dynamic>>.from(shiftsRes);
-      final allocs = List<Map<String, dynamic>>.from(allocsRes);
+// ─── Radial Gauge Painter ─────────────────────────────────────────────────────
+class _RadialGaugePainter extends CustomPainter {
+  final double progress;
+  final Color  color;
+  _RadialGaugePainter({required this.progress, required this.color});
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = Offset(size.width / 2, size.height / 2);
+    final r = size.width / 2 - 6;
+    // Track
+    canvas.drawCircle(c, r, Paint()..color = Colors.white10..style = PaintingStyle.stroke..strokeWidth = 7);
+    // Arc
+    final arcPaint = Paint()
+      ..color = color ..style = PaintingStyle.stroke ..strokeWidth = 7
+      ..strokeCap = StrokeCap.round;
+    canvas.drawArc(Rect.fromCircle(center: c, radius: r),
+      -math.pi / 2, 2 * math.pi * progress, false, arcPaint);
+  }
+  @override bool shouldRepaint(_RadialGaugePainter old) => old.progress != progress;
+}
 
-      showDialog(
-        context: context,
-        builder: (_) => StatefulBuilder(builder: (ctx, setDlg) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Row(children: [
-            Icon(Icons.manage_accounts, color: _kPrimary),
-            SizedBox(width: 8),
-            Text("Guard Shifts", style: TextStyle(fontSize: 17)),
+// ─── Glass Sheet ──────────────────────────────────────────────────────────────
+class _GlassSheet extends StatelessWidget {
+  final String title; final IconData icon; final Widget child;
+  const _GlassSheet({required this.title, required this.icon, required this.child});
+  @override
+  Widget build(BuildContext context) => Container(
+    margin: const EdgeInsets.all(10),
+    decoration: BoxDecoration(
+      color: const Color(0xFF111836),
+      borderRadius: BorderRadius.circular(28),
+      border: Border.all(color: Colors.white.withOpacity(0.08)),
+    ),
+    child: Column(mainAxisSize: MainAxisSize.min, children: [
+      const SizedBox(height: 8),
+      Container(width: 40, height: 4,
+        decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
+        child: Row(children: [
+          Icon(icon, color: _kAccent, size: 22),
+          const SizedBox(width: 10),
+          Text(title, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+        ]),
+      ),
+      const Divider(color: Colors.white10, height: 1),
+      Flexible(child: SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
+        child: child,
+      )),
+    ]),
+  );
+}
+
+// ─── Loading Dialog ───────────────────────────────────────────────────────────
+class _LoadingDialog extends StatelessWidget {
+  final String message;
+  const _LoadingDialog({required this.message});
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    backgroundColor: const Color(0xFF111836),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+    content: Row(children: [
+      const CircularProgressIndicator(color: _kAccent, strokeWidth: 3),
+      const SizedBox(width: 16),
+      Text(message, style: const TextStyle(color: Colors.white70)),
+    ]),
+  );
+}
+
+// ─── Shift Sheet ──────────────────────────────────────────────────────────────
+class _ShiftSheet extends StatefulWidget {
+  final List<Map<String,dynamic>> guards, shifts, allocs;
+  final Future<void> Function(String, List<String>) onSave;
+  const _ShiftSheet({required this.guards, required this.shifts, required this.allocs, required this.onSave});
+  @override
+  State<_ShiftSheet> createState() => _ShiftSheetState();
+}
+
+class _ShiftSheetState extends State<_ShiftSheet> {
+  late List<Map<String,dynamic>> _allocs;
+  @override
+  void initState() { super.initState(); _allocs = List.from(widget.allocs); }
+  @override
+  Widget build(BuildContext context) => _GlassSheet(
+    title: "Guard Shifts", icon: Icons.manage_accounts_rounded,
+    child: Column(
+      children: widget.guards.map((g) {
+        final gid = g['security_id'];
+        final assigned = _allocs.where((a) => a['security_id'] == gid)
+            .map((a) => a['shift_id'].toString()).toSet();
+        return Container(
+          margin: const EdgeInsets.symmetric(vertical: 6),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.04),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withOpacity(0.08)),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              CircleAvatar(radius: 20, backgroundColor: _kAccent.withOpacity(0.15),
+                child: const Icon(Icons.person_rounded, color: _kAccent, size: 20)),
+              const SizedBox(width: 10),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(g['security_name'] ?? 'Guard', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                Text("ID: $gid", style: const TextStyle(color: Colors.white38, fontSize: 11)),
+              ])),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: (assigned.isEmpty ? _kRed : _kGreen).withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(assigned.isEmpty ? "No shift" : "${assigned.length} shift(s)",
+                  style: TextStyle(color: assigned.isEmpty ? _kRed : _kGreen,
+                    fontWeight: FontWeight.bold, fontSize: 11)),
+              ),
+            ]),
+            const SizedBox(height: 10),
+            Wrap(spacing: 6, runSpacing: 4,
+              children: widget.shifts.map((s) {
+                final sid = s['shift_id'].toString();
+                final on  = assigned.contains(sid);
+                return FilterChip(
+                  label: Text("${s['shift_name']} (${s['start_time']}–${s['end_time']})",
+                    style: const TextStyle(fontSize: 11)),
+                  selected: on,
+                  selectedColor: _kAccent.withOpacity(0.2),
+                  checkmarkColor: _kAccent,
+                  onSelected: (val) async {
+                    final upd = Set<String>.from(assigned);
+                    val ? upd.add(sid) : upd.remove(sid);
+                    await widget.onSave(gid, upd.toList());
+                    _allocs.removeWhere((a) => a['security_id'] == gid);
+                    for (var id in upd) _allocs.add({'security_id': gid, 'shift_id': id});
+                    setState(() {});
+                  },
+                );
+              }).toList(),
+            ),
           ]),
-          content: SizedBox(width: double.maxFinite, child: ListView.builder(
-            shrinkWrap: true, itemCount: guards.length,
-            itemBuilder: (_, i) {
-              final guard = guards[i];
-              final gId = guard['security_id'];
-              final assigned = allocs.where((a) => a['security_id'] == gId)
-                  .map((a) => a['shift_id'].toString()).toSet();
-              return Card(
-                margin: const EdgeInsets.symmetric(vertical: 6),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                elevation: 1,
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Row(children: [
-                      CircleAvatar(radius: 18, backgroundColor: _kPrimary.withOpacity(0.1),
-                        child: const Icon(Icons.person, color: _kPrimary, size: 18)),
-                      const SizedBox(width: 10),
-                      Expanded(child: Text(guard['security_name'] ?? 'Guard',
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14))),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: assigned.isEmpty ? Colors.red.withOpacity(0.1) : Colors.green.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(assigned.isEmpty ? "No shift" : "${assigned.length} shift(s)",
-                          style: TextStyle(color: assigned.isEmpty ? Colors.red : Colors.green, fontSize: 11, fontWeight: FontWeight.bold)),
-                      ),
-                    ]),
+        );
+      }).toList(),
+    ),
+  );
+}
+
+// ─── Extraordinary Report Sheet ───────────────────────────────────────────────
+class _ReportSheet extends StatefulWidget {
+  final List<Map<String,dynamic>> roundSlots;
+  final String campusName;
+  final int totalQr, scanned;
+  final bool isLoading;
+  const _ReportSheet({required this.roundSlots, required this.campusName,
+      required this.totalQr, required this.scanned, required this.isLoading});
+  @override
+  State<_ReportSheet> createState() => _ReportSheetState();
+}
+
+class _ReportSheetState extends State<_ReportSheet> with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 800))..forward();
+  }
+  @override void dispose() { _ctrl.dispose(); super.dispose(); }
+
+  @override
+  Widget build(BuildContext context) {
+    final success = widget.roundSlots.where((s) => s['status'] == 'success').length;
+    final missed  = widget.roundSlots.where((s) => s['status'] == 'missed').length;
+    final active  = widget.roundSlots.where((s) => s['status'] == 'current').length;
+    final future  = widget.roundSlots.where((s) => s['status'] == 'future').length;
+    final total   = widget.roundSlots.length;
+    final rate    = total > 0 ? (success / total * 100) : 0.0;
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.92, minChildSize: 0.5, maxChildSize: 0.97,
+      builder: (_, scrollCtrl) => Container(
+        decoration: const BoxDecoration(
+          color: Color(0xFF0A0E27),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          border: Border(top: BorderSide(color: Colors.white10)),
+        ),
+        child: Column(children: [
+          // Handle
+          const SizedBox(height: 8),
+          Container(width: 44, height: 4,
+            decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
+          const SizedBox(height: 4),
+
+          // Header Bar
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 12, 8),
+            child: Row(children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(colors: [_kAccent, _kCyan]),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(Icons.analytics_rounded, color: Colors.white, size: 22),
+              ),
+              const SizedBox(width: 12),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text("Patrol Report", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                Text(widget.campusName, style: const TextStyle(color: Colors.white38, fontSize: 12)),
+              ])),
+              IconButton(icon: const Icon(Icons.close_rounded, color: Colors.white54),
+                onPressed: () => Navigator.pop(context)),
+            ]),
+          ),
+
+          Expanded(child: ListView(
+            controller: scrollCtrl,
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+            children: [
+
+              // ── Summary Cards ─────────────────────────────────────────
+              Row(children: [
+                _summaryCard("Success", "$success", _kGreen, Icons.check_circle_rounded),
+                const SizedBox(width: 8),
+                _summaryCard("Missed", "$missed", _kRed, Icons.cancel_rounded),
+                const SizedBox(width: 8),
+                _summaryCard("Active", "$active", _kAccent, Icons.play_circle_rounded),
+                const SizedBox(width: 8),
+                _summaryCard("Future", "$future", Colors.white24, Icons.schedule_rounded),
+              ]),
+
+              const SizedBox(height: 14),
+
+              // ── Completion Rate Card ───────────────────────────────────
+              Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [_kAccent.withOpacity(0.15), _kCyan.withOpacity(0.08)],
+                    begin: Alignment.topLeft, end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: _kAccent.withOpacity(0.2)),
+                ),
+                child: Row(children: [
+                  SizedBox(width: 80, height: 80,
+                    child: CustomPaint(
+                      painter: _RadialGaugePainter(progress: rate / 100, color: _kGreen),
+                      child: Center(child: Text("${rate.toInt()}%",
+                        style: const TextStyle(color: _kGreen, fontWeight: FontWeight.bold, fontSize: 16))),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    const Text("Completion Rate", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                    const SizedBox(height: 4),
+                    Text("$success of $total rounds completed",
+                      style: const TextStyle(color: Colors.white54, fontSize: 13)),
                     const SizedBox(height: 10),
-                    Wrap(spacing: 6, runSpacing: 4,
-                      children: shifts.map((s) {
-                        final sId = s['shift_id'].toString();
-                        final checked = assigned.contains(sId);
-                        return FilterChip(
-                          label: Text("${s['shift_name']} (${s['start_time']}–${s['end_time']})", style: const TextStyle(fontSize: 11)),
-                          selected: checked,
-                          selectedColor: _kPrimary.withOpacity(0.15),
-                          checkmarkColor: _kPrimary,
-                          onSelected: (val) async {
-                            final updated = Set<String>.from(assigned);
-                            val ? updated.add(sId) : updated.remove(sId);
-                            await _editGuardShifts(gId, updated.toList());
-                            allocs.removeWhere((a) => a['security_id'] == gId);
-                            for (var id in updated) allocs.add({'security_id': gId, 'shift_id': id});
-                            setDlg(() {});
-                          },
+                    Row(children: [
+                      _miniStat("QR Total", "${widget.totalQr}"),
+                      const SizedBox(width: 16),
+                      _miniStat("Scanned", "${widget.scanned}"),
+                    ]),
+                  ])),
+                ]),
+              ),
+
+              const SizedBox(height: 18),
+
+              const Row(children: [
+                Icon(Icons.timeline_rounded, color: _kAccent, size: 18),
+                SizedBox(width: 8),
+                Text("Timeline", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+              ]),
+
+              const SizedBox(height: 12),
+
+              // ── Timeline ──────────────────────────────────────────────
+              widget.isLoading
+                ? const Center(child: Padding(padding: EdgeInsets.all(32),
+                    child: CircularProgressIndicator(color: _kAccent)))
+                : widget.roundSlots.isEmpty
+                  ? Center(child: Padding(padding: const EdgeInsets.all(32),
+                      child: Column(children: [
+                        const Icon(Icons.inbox_rounded, color: Colors.white24, size: 48),
+                        const SizedBox(height: 12),
+                        Text("No round data", style: const TextStyle(color: Colors.white38)),
+                      ])))
+                  : Column(
+                      children: widget.roundSlots.asMap().entries.map((entry) {
+                        final i    = entry.key;
+                        final slot = entry.value;
+                        final anim = Tween<double>(begin: 0, end: 1).animate(
+                          CurvedAnimation(
+                            parent: _ctrl,
+                            curve: Interval(
+                              math.min(i * 0.04, 0.9), math.min(i * 0.04 + 0.2, 1.0),
+                              curve: Curves.easeOutCubic,
+                            ),
+                          ),
+                        );
+                        return AnimatedBuilder(
+                          animation: anim,
+                          builder: (_, child) => Opacity(
+                            opacity: anim.value,
+                            child: Transform.translate(offset: Offset(0, 20 * (1 - anim.value)), child: child),
+                          ),
+                          child: _TimelineItem(slot: slot, isLast: i == widget.roundSlots.length - 1),
                         );
                       }).toList(),
                     ),
-                  ]),
-                ),
-              );
-            },
+            ],
           )),
-          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Done"))],
-        )),
-      );
-    } catch (e) {
-      if (mounted) { Navigator.of(context).pop(); }
-    }
+        ]),
+      ),
+    );
   }
 
-  Future<void> _editGuardShifts(String securityId, List<String> shiftIds) async {
-    final client = Supabase.instance.client;
-    try {
-      await client.from('shift_allocations').delete().eq('security_id', securityId);
-      if (shiftIds.isNotEmpty) {
-        await client.from('shift_allocations').insert(shiftIds.map((sId) => {
-          'security_id': securityId, 'shift_id': sId, 'allocation_date': '2099-12-31',
-        }).toList());
-      }
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text("Shifts updated!"), backgroundColor: Colors.green, duration: Duration(seconds: 1)));
-      }
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Failed: $e"), backgroundColor: Colors.red));
+  Widget _summaryCard(String label, String val, Color color, IconData icon) => Expanded(
+    child: Container(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: Column(children: [
+        Icon(icon, color: color, size: 20),
+        const SizedBox(height: 4),
+        Text(val, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 18)),
+        Text(label, style: const TextStyle(color: Colors.white38, fontSize: 10)),
+      ]),
+    ),
+  );
+
+  Widget _miniStat(String label, String val) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    Text(label, style: const TextStyle(color: Colors.white38, fontSize: 11)),
+    Text(val, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
+  ]);
+}
+
+// ─── Timeline Item ────────────────────────────────────────────────────────────
+class _TimelineItem extends StatefulWidget {
+  final Map<String,dynamic> slot;
+  final bool isLast;
+  const _TimelineItem({required this.slot, required this.isLast});
+  @override
+  State<_TimelineItem> createState() => _TimelineItemState();
+}
+
+class _TimelineItemState extends State<_TimelineItem> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final slot   = widget.slot;
+    final status = slot['status'] as String;
+    final scanned = (slot['scanned'] ?? 0) as int;
+    final total   = (slot['total']   ?? 0) as int;
+    final prog    = total > 0 ? scanned / total : 0.0;
+
+    Color dotColor; IconData dotIcon; String badgeText;
+    switch (status) {
+      case 'success': dotColor = _kGreen;  dotIcon = Icons.check_circle_rounded; badgeText = 'DONE'; break;
+      case 'missed':  dotColor = _kRed;    dotIcon = Icons.cancel_rounded;       badgeText = 'MISSED'; break;
+      case 'current': dotColor = _kAccent; dotIcon = Icons.play_circle_rounded;  badgeText = 'ACTIVE'; break;
+      case 'no_qr':   dotColor = Colors.grey; dotIcon = Icons.remove_circle_rounded; badgeText = 'NO QR'; break;
+      default:        dotColor = Colors.white24; dotIcon = Icons.schedule_rounded; badgeText = 'UPCOMING';
     }
+
+    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      // Timeline line + dot
+      SizedBox(width: 28, child: Column(children: [
+        Container(
+          width: 28, height: 28,
+          decoration: BoxDecoration(
+            color: dotColor.withOpacity(0.15),
+            shape: BoxShape.circle,
+            border: Border.all(color: dotColor.withOpacity(0.5), width: 1.5),
+            boxShadow: status == 'current' ? [BoxShadow(color: dotColor.withOpacity(0.4), blurRadius: 8)] : null,
+          ),
+          child: Icon(dotIcon, color: dotColor, size: 14),
+        ),
+        if (!widget.isLast)
+          Container(width: 1.5, height: 52, color: Colors.white10),
+      ])),
+
+      const SizedBox(width: 12),
+
+      // Content
+      Expanded(child: GestureDetector(
+        onTap: () => setState(() => _expanded = !_expanded),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 250),
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: dotColor.withOpacity(status == 'current' ? 0.08 : 0.04),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: dotColor.withOpacity(0.2)),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(slot['round'], style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                Text(slot['label'], style: const TextStyle(color: Colors.white38, fontSize: 12)),
+              ])),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: dotColor.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(badgeText,
+                  style: TextStyle(color: dotColor, fontSize: 10, fontWeight: FontWeight.bold)),
+              ),
+              const SizedBox(width: 6),
+              Icon(_expanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+                color: Colors.white24, size: 18),
+            ]),
+
+            // Progress mini bar
+            if (status != 'future' && status != 'no_qr') ...[
+              const SizedBox(height: 8),
+              Row(children: [
+                Expanded(child: ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: LinearProgressIndicator(
+                    value: prog, minHeight: 4,
+                    backgroundColor: Colors.white10,
+                    valueColor: AlwaysStoppedAnimation<Color>(dotColor),
+                  ),
+                )),
+                const SizedBox(width: 8),
+                Text("$scanned/$total", style: TextStyle(color: dotColor, fontSize: 11, fontWeight: FontWeight.bold)),
+              ]),
+            ],
+
+            // Expanded detail
+            if (_expanded) ...[
+              const SizedBox(height: 10),
+              const Divider(color: Colors.white10, height: 1),
+              const SizedBox(height: 10),
+              _detailRow(Icons.person_rounded, "Guard", slot['guard'] ?? '—'),
+              const SizedBox(height: 4),
+              _detailRow(Icons.access_time_rounded, "Window",
+                "${slot['label']} (+45 min to +90 min)"),
+              if (status == 'success')
+                _detailRow(Icons.done_all_rounded, "Result", "All $total checkpoints scanned"),
+              if (status == 'missed')
+                _detailRow(Icons.warning_rounded, "Result", "$scanned of $total scanned — Round missed"),
+            ],
+          ]),
+        ),
+      )),
+    ]);
   }
+
+  Widget _detailRow(IconData icon, String label, String val) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 2),
+    child: Row(children: [
+      Icon(icon, size: 14, color: Colors.white38),
+      const SizedBox(width: 8),
+      Text("$label: ", style: const TextStyle(color: Colors.white38, fontSize: 12)),
+      Expanded(child: Text(val, style: const TextStyle(color: Colors.white70, fontSize: 12))),
+    ]),
+  );
 }

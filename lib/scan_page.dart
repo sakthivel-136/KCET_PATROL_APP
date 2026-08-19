@@ -56,35 +56,39 @@ class _ScanningPageState extends State<ScanningPage> with TickerProviderStateMix
 
   DateTime? _lastScanTime; // cooldown
 
-  // ── Animation ──
+  // ── Animations ──────────────────────────────────────────────────────────────
   late AnimationController _scanLineCtrl;
+  late AnimationController _successCtrl;
+  late AnimationController _bracketCtrl;
   late Animation<double> _scanLineAnim;
+  late Animation<double> _successAnim;
+  late Animation<double> _bracketAnim;
+  String? _lastSuccessName;
 
   // ================= INIT =================
 
   @override
   void initState() {
     super.initState();
-
     _currentRound = _getRoundStart();
-
     final h = DateTime.now().hour;
     _torchOn = (h >= 18 || h < 6);
 
-    // Scan line sweep animation
     _scanLineCtrl = AnimationController(vsync: this, duration: const Duration(seconds: 2))
       ..repeat(reverse: true);
     _scanLineAnim = CurvedAnimation(parent: _scanLineCtrl, curve: Curves.easeInOut);
 
-    _initScanner();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _requestRequiredPermissions();
-    });
-    _fetchCheckpoints();
+    _successCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200));
+    _successAnim = CurvedAnimation(parent: _successCtrl, curve: Curves.easeOutBack);
 
-    _syncTimer = Timer.periodic(const Duration(seconds: 20), (_) {
-      _fetchCheckpoints();
-    });
+    _bracketCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
+    _bracketAnim = CurvedAnimation(parent: _bracketCtrl, curve: Curves.easeOutCubic);
+    _bracketCtrl.forward();
+
+    _initScanner();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _requestRequiredPermissions());
+    _fetchCheckpoints();
+    _syncTimer = Timer.periodic(const Duration(seconds: 20), (_) => _fetchCheckpoints());
   }
 
   // ================= SLOT =================
@@ -482,6 +486,7 @@ class _ScanningPageState extends State<ScanningPage> with TickerProviderStateMix
 
       _activeQrId = null;
       _msg('SCAN UPLOADED', Colors.green);
+      _showSuccess(p['qr_name']?.toString() ?? 'Checkpoint Scanned!');
 
       _fetchCheckpoints();
       _checkAutoLogout();
@@ -599,328 +604,27 @@ class _ScanningPageState extends State<ScanningPage> with TickerProviderStateMix
     });
   }
 
+
   // ================= FLASH =================
 
-  void _toggleFlash() async {
+  Future<void> _toggleFlash() async {
     if (!_torchReady) return;
-
     try {
       await scannerController.toggleTorch();
       setState(() => _torchOn = !_torchOn);
     } catch (_) {}
   }
 
-  // ================= UI =================
+  // ================= SUCCESS BURST =================
 
-  @override
-  Widget build(BuildContext context) {
-    const bg1 = Color(0xFF0D47A1);
-    const bg2 = Color(0xFF001E62);
-    const primary = Color(0xFF0A74DA);
-
-    final scannedCount = _checkpoints.where((p) => p['completed'] == true).length;
-    final totalCount = _checkpoints.length;
-    final progress = totalCount > 0 ? scannedCount / totalCount : 0.0;
-
-    return Scaffold(
-      extendBodyBehindAppBar: true,
-      backgroundColor: bg2,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        systemOverlayStyle: SystemUiOverlayStyle.light,
-        title: const Text("QR Patrol Scan",
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
-        centerTitle: true,
-        iconTheme: const IconThemeData(color: Colors.white),
-        actions: [
-          IconButton(
-            icon: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 300),
-              child: Icon(
-                _torchOn ? Icons.flash_on_rounded : Icons.flash_off_rounded,
-                key: ValueKey(_torchOn),
-                color: _torchOn ? Colors.yellow : Colors.white70,
-              ),
-            ),
-            onPressed: _toggleFlash,
-            tooltip: "Toggle Flashlight",
-          ),
-          const SizedBox(width: 4),
-        ],
-      ),
-      body: _loading
-          ? Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [bg1, bg2]),
-              ),
-              child: const Center(child: CircularProgressIndicator(color: Colors.white)),
-            )
-          : Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [bg1, bg2]),
-              ),
-              child: SafeArea(
-                child: Column(
-                  children: [
-                    const SizedBox(height: 10),
-
-                    // ── Info Card ──────────────────────────────────────────
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.09),
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(color: Colors.white.withOpacity(0.15)),
-                        ),
-                        child: Row(children: [
-                          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Text(
-                              _currentRoundLabel.isEmpty ? 'Current Scan' : _currentRoundLabel,
-                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(_windowLabel(),
-                              style: TextStyle(fontSize: 12, color: Colors.white.withOpacity(0.6))),
-                          ])),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: _scanAvailable
-                                  ? const Color(0xFF00C853).withOpacity(0.2)
-                                  : Colors.red.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: _scanAvailable ? const Color(0xFF00C853) : Colors.red, width: 1),
-                            ),
-                            child: Row(mainAxisSize: MainAxisSize.min, children: [
-                              Icon(
-                                _scanAvailable ? Icons.lock_open_rounded : Icons.lock_rounded,
-                                size: 13,
-                                color: _scanAvailable ? const Color(0xFF00C853) : Colors.redAccent,
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                _scanAvailable ? 'OPEN' : 'CLOSED',
-                                style: TextStyle(
-                                  fontSize: 11, fontWeight: FontWeight.bold,
-                                  color: _scanAvailable ? const Color(0xFF00C853) : Colors.redAccent,
-                                ),
-                              ),
-                            ]),
-                          ),
-                        ]),
-                      ),
-                    ),
-
-                    const SizedBox(height: 14),
-
-                    // ── Camera Frame ───────────────────────────────────────
-                    Center(
-                      child: Container(
-                        width: 220, height: 220,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(20),
-                          boxShadow: [
-                            BoxShadow(color: primary.withOpacity(0.35), blurRadius: 30, spreadRadius: 4),
-                          ],
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(20),
-                          child: Stack(
-                            children: [
-                              // Camera feed
-                              MobileScanner(controller: scannerController, onDetect: _onScan),
-
-                              // Scan line sweep
-                              if (_overlayTimer == 0)
-                                AnimatedBuilder(
-                                  animation: _scanLineAnim,
-                                  builder: (_, __) => Positioned(
-                                    top: _scanLineAnim.value * 200,
-                                    left: 0, right: 0,
-                                    child: Container(
-                                      height: 2,
-                                      decoration: BoxDecoration(
-                                        gradient: LinearGradient(colors: [
-                                          Colors.transparent,
-                                          const Color(0xFF00C6FF).withOpacity(0.8),
-                                          Colors.transparent,
-                                        ]),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-
-                              // Countdown overlay
-                              if (_overlayTimer > 0)
-                                Positioned.fill(
-                                  child: Container(
-                                    color: Colors.black.withOpacity(0.65),
-                                    child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                                      SizedBox(
-                                        width: 90, height: 90,
-                                        child: Stack(
-                                          alignment: Alignment.center,
-                                          children: [
-                                            CircularProgressIndicator(
-                                              value: _totalTime > 0 ? _overlayTimer / _totalTime : 0,
-                                              strokeWidth: 6,
-                                              backgroundColor: Colors.white12,
-                                              valueColor: const AlwaysStoppedAnimation(Color(0xFFFFAB00)),
-                                            ),
-                                            Text("$_overlayTimer",
-                                              style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
-                                          ],
-                                        ),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      const Text("Hold position...",
-                                        style: TextStyle(color: Colors.white70, fontSize: 12)),
-                                    ]),
-                                  ),
-                                ),
-
-                              // Corner brackets
-                              Positioned(top: 12, left: 12, child: _corner(topLeft: true)),
-                              Positioned(top: 12, right: 12, child: _corner(topRight: true)),
-                              Positioned(bottom: 12, left: 12, child: _corner(bottomLeft: true)),
-                              Positioned(bottom: 12, right: 12, child: _corner(bottomRight: true)),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 14),
-
-                    // ── Progress Bar ───────────────────────────────────────
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Row(children: [
-                        Expanded(
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(10),
-                            child: LinearProgressIndicator(
-                              value: progress,
-                              minHeight: 7,
-                              backgroundColor: Colors.white12,
-                              valueColor: const AlwaysStoppedAnimation(Color(0xFF00C853)),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Text("$scannedCount/$totalCount",
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
-                      ]),
-                    ),
-
-                    const SizedBox(height: 14),
-
-                    // ── Checkpoint Grid ────────────────────────────────────
-                    Expanded(
-                      child: GridView.builder(
-                        physics: const BouncingScrollPhysics(),
-                        padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 3,
-                          crossAxisSpacing: 10,
-                          mainAxisSpacing: 10,
-                          childAspectRatio: 1.05,
-                        ),
-                        itemCount: _checkpoints.length,
-                        itemBuilder: (_, i) {
-                          final p = _checkpoints[i];
-                          final bool completed  = p['completed']   == true;
-                          final bool waitingDone = p['waiting_done'] == true;
-                          final bool scannedOnce = p['scanned_once'] == true;
-
-                          Color  bg; Color txt; Widget icon; String label;
-                          List<Color> grad;
-
-                          if (completed) {
-                            grad = [const Color(0xFF1B5E20), const Color(0xFF2E7D32)];
-                            txt  = Colors.white;
-                            icon = const Icon(Icons.check_circle_rounded, color: Colors.white, size: 26);
-                            label = "Done";
-                          } else if (waitingDone) {
-                            grad = [const Color(0xFFE65100), const Color(0xFFEF6C00)];
-                            txt  = Colors.white;
-                            icon = const Icon(Icons.play_circle_fill, color: Colors.white, size: 26);
-                            label = "Scan Now!";
-                          } else if (scannedOnce) {
-                            grad = [const Color(0xFFB71C1C), const Color(0xFFC62828)];
-                            txt  = Colors.white;
-                            icon = Text("${p['timer']}s",
-                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18));
-                            label = "Waiting";
-                          } else {
-                            grad = [const Color(0xFF1A237E), const Color(0xFF283593)];
-                            txt  = Colors.white60;
-                            icon = Icon(Icons.qr_code_rounded, color: Colors.white38, size: 26);
-                            label = "Pending";
-                          }
-                          bg = grad.first;
-
-                          return AnimatedContainer(
-                            duration: const Duration(milliseconds: 350),
-                            curve: Curves.easeInOut,
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.topLeft, end: Alignment.bottomRight, colors: grad),
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(color: Colors.white.withOpacity(completed ? 0.25 : 0.08), width: 1),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: (completed ? const Color(0xFF00C853) : bg).withOpacity(0.3),
-                                  blurRadius: completed ? 12 : 4,
-                                  offset: const Offset(0, 3),
-                                ),
-                              ],
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(8),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                                children: [
-                                  Text(
-                                    p['qr_name'] ?? "PT ${i + 1}",
-                                    textAlign: TextAlign.center,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: txt),
-                                  ),
-                                  icon,
-                                  Text(label,
-                                    style: TextStyle(
-                                      fontSize: 9, fontWeight: FontWeight.w600,
-                                      color: txt.withOpacity(0.75), letterSpacing: 0.4)),
-                                ],
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-    );
-  }
-
-  Widget _corner({bool topLeft=false, bool topRight=false, bool bottomLeft=false, bool bottomRight=false}) {
-    return SizedBox(
-      width: 22, height: 22,
-      child: CustomPaint(
-        painter: _CornerPainter(
-          topLeft: topLeft, topRight: topRight,
-          bottomLeft: bottomLeft, bottomRight: bottomRight,
-        ),
-      ),
-    );
+  void _showSuccess(String name) {
+    _lastSuccessName = name;
+    _successCtrl.reset();
+    _successCtrl.forward().then((_) {
+      Future.delayed(const Duration(milliseconds: 900), () {
+        if (mounted) _successCtrl.reverse();
+      });
+    });
   }
 
   // ================= DISPOSE =================
@@ -929,33 +633,396 @@ class _ScanningPageState extends State<ScanningPage> with TickerProviderStateMix
   void dispose() {
     _syncTimer?.cancel();
     _scanLineCtrl.dispose();
+    _successCtrl.dispose();
+    _bracketCtrl.dispose();
     scannerController.dispose();
     super.dispose();
   }
+
+  // ================= UI =================
+
+  @override
+  Widget build(BuildContext context) {
+    final scanned = _checkpoints.where((p) => p['completed'] == true).length;
+    final total   = _checkpoints.length;
+    final prog    = total > 0 ? scanned / total : 0.0;
+
+    return Scaffold(
+      backgroundColor: const Color(0xFF070B1F),
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        systemOverlayStyle: SystemUiOverlayStyle.light,
+        iconTheme: const IconThemeData(color: Colors.white),
+        title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(
+            _currentRoundLabel.isEmpty ? 'QR Patrol Scan' : _currentRoundLabel,
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+          ),
+          Text(_windowLabel(), style: const TextStyle(color: Colors.white38, fontSize: 11)),
+        ]),
+        actions: [
+          Container(
+            margin: const EdgeInsets.only(right: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: _scanAvailable
+                  ? const Color(0xFF00E676).withOpacity(0.18)
+                  : const Color(0xFFFF1744).withOpacity(0.18),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: _scanAvailable ? const Color(0xFF00E676) : const Color(0xFFFF1744),
+                width: 1,
+              ),
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(
+                _scanAvailable ? Icons.lock_open_rounded : Icons.lock_rounded,
+                size: 12,
+                color: _scanAvailable ? const Color(0xFF00E676) : const Color(0xFFFF1744),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                _scanAvailable ? 'OPEN' : 'CLOSED',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  color: _scanAvailable ? const Color(0xFF00E676) : const Color(0xFFFF1744),
+                ),
+              ),
+            ]),
+          ),
+          IconButton(
+            icon: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              child: Icon(
+                _torchOn ? Icons.flash_on_rounded : Icons.flash_off_rounded,
+                key: ValueKey(_torchOn),
+                color: _torchOn ? Colors.yellow : Colors.white54,
+                size: 22,
+              ),
+            ),
+            onPressed: _toggleFlash,
+          ),
+        ],
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator(color: Color(0xFF2979FF)))
+          : Stack(
+              children: [
+                // Full-screen camera
+                Positioned.fill(
+                  child: MobileScanner(controller: scannerController, onDetect: _onScan),
+                ),
+
+                // Top gradient for AppBar readability
+                Positioned(
+                  top: 0, left: 0, right: 0, height: 140,
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Color(0xCC000000), Colors.transparent],
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Sweep scan line
+                if (_overlayTimer == 0)
+                  AnimatedBuilder(
+                    animation: _scanLineAnim,
+                    builder: (_, __) {
+                      final h = MediaQuery.of(context).size.height * 0.55;
+                      return Positioned(
+                        top: _scanLineAnim.value * h,
+                        left: 0, right: 0,
+                        child: Container(
+                          height: 2,
+                          decoration: const BoxDecoration(
+                            gradient: LinearGradient(colors: [
+                              Colors.transparent,
+                              Color(0xFF00E5FF),
+                              Colors.transparent,
+                            ]),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+
+                // Animated corner brackets
+                AnimatedBuilder(
+                  animation: _bracketAnim,
+                  builder: (_, __) {
+                    final size = MediaQuery.of(context).size;
+                    final cx = size.width / 2;
+                    final cy = size.height * 0.28;
+                    const boxW = 180.0;
+                    const boxH = 180.0;
+                    return CustomPaint(
+                      size: size,
+                      painter: _ScanFramePainter(
+                        l: cx - boxW / 2, t: cy - boxH / 2,
+                        r: cx + boxW / 2, b: cy + boxH / 2,
+                        progress: _bracketAnim.value,
+                      ),
+                    );
+                  },
+                ),
+
+                // Countdown ring overlay
+                if (_overlayTimer > 0)
+                  Center(
+                    child: Container(
+                      width: 140, height: 140,
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.75),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white12),
+                      ),
+                      child: Stack(alignment: Alignment.center, children: [
+                        CircularProgressIndicator(
+                          value: _totalTime > 0 ? _overlayTimer / _totalTime : 0,
+                          strokeWidth: 8,
+                          backgroundColor: Colors.white12,
+                          valueColor: const AlwaysStoppedAnimation(Color(0xFFFFAB00)),
+                        ),
+                        Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                          Text("$_overlayTimer",
+                            style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.bold)),
+                          const Text("sec", style: TextStyle(color: Colors.white38, fontSize: 12)),
+                        ]),
+                      ]),
+                    ),
+                  ),
+
+                // Success burst overlay
+                AnimatedBuilder(
+                  animation: _successAnim,
+                  builder: (_, __) {
+                    if (_successAnim.value == 0) return const SizedBox.shrink();
+                    return Positioned.fill(
+                      child: IgnorePointer(
+                        child: Container(
+                          color: const Color(0xFF00E676).withOpacity(_successAnim.value * 0.22),
+                          child: Center(
+                            child: Opacity(
+                              opacity: _successAnim.value,
+                              child: Transform.scale(
+                                scale: _successAnim.value,
+                                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                                  Container(
+                                    width: 90, height: 90,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: const Color(0xFF00E676).withOpacity(0.9),
+                                      boxShadow: [BoxShadow(
+                                        color: const Color(0xFF00E676).withOpacity(0.6),
+                                        blurRadius: 40, spreadRadius: 10,
+                                      )],
+                                    ),
+                                    child: const Icon(Icons.check_rounded, color: Colors.white, size: 50),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    _lastSuccessName ?? 'Scanned!',
+                                    style: const TextStyle(
+                                      color: Colors.white, fontSize: 18,
+                                      fontWeight: FontWeight.bold, letterSpacing: 1,
+                                    ),
+                                  ),
+                                ]),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+
+                // Draggable checkpoint panel
+                DraggableScrollableSheet(
+                  initialChildSize: 0.42,
+                  minChildSize: 0.12,
+                  maxChildSize: 0.75,
+                  builder: (_, scrollCtrl) => Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0A0E27).withOpacity(0.97),
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                      border: const Border(top: BorderSide(color: Colors.white10)),
+                    ),
+                    child: Column(children: [
+                      const SizedBox(height: 8),
+                      Container(
+                        width: 40, height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.white24,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+
+                      // Progress bar
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Row(children: [
+                          Expanded(
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: LinearProgressIndicator(
+                                value: prog,
+                                minHeight: 6,
+                                backgroundColor: Colors.white10,
+                                valueColor: const AlwaysStoppedAnimation(Color(0xFF00E676)),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Text(
+                            "$scanned / $total",
+                            style: const TextStyle(
+                              color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                          ),
+                        ]),
+                      ),
+                      const SizedBox(height: 10),
+
+                      // Checkpoint grid
+                      Expanded(
+                        child: GridView.builder(
+                          controller: scrollCtrl,
+                          physics: const BouncingScrollPhysics(),
+                          padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
+                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 3,
+                            crossAxisSpacing: 10,
+                            mainAxisSpacing: 10,
+                            childAspectRatio: 1.05,
+                          ),
+                          itemCount: _checkpoints.length,
+                          itemBuilder: (_, i) {
+                            final p         = _checkpoints[i];
+                            final done      = p['completed']    == true;
+                            final ready     = p['waiting_done'] == true;
+                            final waiting   = p['scanned_once'] == true;
+                            List<Color> grad; Widget icon; String lbl;
+                            if (done) {
+                              grad = [const Color(0xFF1B5E20), const Color(0xFF2E7D32)];
+                              icon = const Icon(Icons.check_circle_rounded, color: Colors.white, size: 28);
+                              lbl  = 'Done';
+                            } else if (ready) {
+                              grad = [const Color(0xFFE65100), const Color(0xFFEF6C00)];
+                              icon = const Icon(Icons.play_circle_fill, color: Colors.white, size: 28);
+                              lbl  = 'Scan Again';
+                            } else if (waiting) {
+                              grad = [const Color(0xFFB71C1C), const Color(0xFFC62828)];
+                              icon = Text('${p['timer']}s',
+                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20));
+                              lbl  = 'Wait...';
+                            } else {
+                              grad = [const Color(0xFF1A237E), const Color(0xFF283593)];
+                              icon = const Icon(Icons.qr_code_rounded, color: Colors.white38, size: 26);
+                              lbl  = 'Pending';
+                            }
+                            return AnimatedContainer(
+                              duration: const Duration(milliseconds: 400),
+                              curve: Curves.easeOutBack,
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: grad,
+                                ),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: Colors.white.withOpacity(done ? 0.25 : 0.06)),
+                                boxShadow: done
+                                    ? [BoxShadow(
+                                        color: const Color(0xFF00E676).withOpacity(0.35),
+                                        blurRadius: 14, offset: const Offset(0, 4),
+                                      )]
+                                    : null,
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.all(8),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                  children: [
+                                    Text(
+                                      p['qr_name'] ?? 'PT ${i + 1}',
+                                      textAlign: TextAlign.center,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
+                                    ),
+                                    icon,
+                                    Text(lbl, style: TextStyle(
+                                      fontSize: 9, fontWeight: FontWeight.w600,
+                                      color: Colors.white.withOpacity(0.6),
+                                      letterSpacing: 0.3,
+                                    )),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ]),
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
 }
 
-// ── Corner bracket painter ──────────────────────────────────────────────────
-class _CornerPainter extends CustomPainter {
-  final bool topLeft, topRight, bottomLeft, bottomRight;
-  _CornerPainter({this.topLeft=false, this.topRight=false, this.bottomLeft=false, this.bottomRight=false});
+// ─── Scan Frame Painter ───────────────────────────────────────────────────────
+class _ScanFramePainter extends CustomPainter {
+  final double l, t, r, b, progress;
+  const _ScanFramePainter({
+    required this.l, required this.t,
+    required this.r, required this.b,
+    required this.progress,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = const Color(0xFF00C6FF)
-      ..strokeWidth = 3
+    // Dim overlay with clear window
+    final dimPaint = Paint()..color = Colors.black.withOpacity(0.45);
+    final path = Path()
+      ..addRect(Rect.fromLTWH(0, 0, size.width, size.height))
+      ..addRect(Rect.fromLTRB(l, t, r, b))
+      ..fillType = PathFillType.evenOdd;
+    canvas.drawPath(path, dimPaint);
+
+    // Cyan corner brackets
+    final bp = Paint()
+      ..color = const Color(0xFF00E5FF).withOpacity(progress)
+      ..strokeWidth = 3.5
       ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;
-
-    const len = 18.0;
-    final w = size.width; final h = size.height;
-
-    if (topLeft)     { canvas.drawLine(Offset(0,len), Offset.zero, paint); canvas.drawLine(Offset.zero, Offset(len,0), paint); }
-    if (topRight)    { canvas.drawLine(Offset(w-len,0), Offset(w,0), paint); canvas.drawLine(Offset(w,0), Offset(w,len), paint); }
-    if (bottomLeft)  { canvas.drawLine(Offset(0,h-len), Offset(0,h), paint); canvas.drawLine(Offset(0,h), Offset(len,h), paint); }
-    if (bottomRight) { canvas.drawLine(Offset(w-len,h), Offset(w,h), paint); canvas.drawLine(Offset(w,h), Offset(w,h-len), paint); }
+    const len = 26.0;
+    // Top-left
+    canvas.drawLine(Offset(l, t + len), Offset(l, t), bp);
+    canvas.drawLine(Offset(l, t), Offset(l + len, t), bp);
+    // Top-right
+    canvas.drawLine(Offset(r - len, t), Offset(r, t), bp);
+    canvas.drawLine(Offset(r, t), Offset(r, t + len), bp);
+    // Bottom-left
+    canvas.drawLine(Offset(l, b - len), Offset(l, b), bp);
+    canvas.drawLine(Offset(l, b), Offset(l + len, b), bp);
+    // Bottom-right
+    canvas.drawLine(Offset(r - len, b), Offset(r, b), bp);
+    canvas.drawLine(Offset(r, b), Offset(r, b - len), bp);
   }
 
   @override
-  bool shouldRepaint(_) => false;
+  bool shouldRepaint(_ScanFramePainter old) => old.progress != progress;
 }
+
