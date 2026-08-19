@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'round_utils.dart';
@@ -45,6 +46,32 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   DateTime? _scanWindowClose;
   bool _isRefreshing = false;
   Timer? _refreshDebouncer;
+  String _selectedLang = "EN"; // 'EN' or 'TA'
+
+  // ── Translations ─────────────────────────────────────────────────────────────
+  static const Map<String, Map<String, String>> _i10n = {
+    'Security Rounds': {'EN': 'Security Rounds', 'TA': 'பாதுகாப்பு சுற்றுகள்'},
+    'Select Campus': {'EN': 'Select Campus', 'TA': 'கேம்பஸ் தேர்வு செய்'},
+    'Shifts': {'EN': 'Shifts', 'TA': 'ஷிப்டுகள்'},
+    'Total QR': {'EN': 'Total QR', 'TA': 'மொத்த QR'},
+    'Scanned': {'EN': 'Scanned', 'TA': 'ஸ்கேன் செய்யப்பட்டது'},
+    'Left': {'EN': 'Left', 'TA': 'மீதமுள்ளது'},
+    'Patrol Progress': {'EN': 'Patrol Progress', 'TA': 'ரோந்து முன்னேற்றம்'},
+    'checkpoints': {'EN': 'checkpoints', 'TA': 'சோதனை புள்ளிகள்'},
+    'Tap to Start Patrol Scan': {'EN': 'Tap to Start Patrol Scan', 'TA': 'ரோந்து ஸ்கேன் தொடங்க தட்டவும்'},
+    'Scan Not Available': {'EN': 'Scan Not Available', 'TA': 'ஸ்கேன் செய்ய முடியாது'},
+    'SCAN': {'EN': 'SCAN', 'TA': 'ஸ்கேன்'},
+    'LOCKED': {'EN': 'LOCKED', 'TA': 'பூட்டப்பட்டது'},
+    'In Progress': {'EN': 'In Progress', 'TA': 'நடைபெறுகிறது'},
+    'Completed': {'EN': 'Completed', 'TA': 'முடிந்தது'},
+    'Overdue': {'EN': 'Overdue', 'TA': 'காலாவதியானது'},
+    'No QR codes to scan.': {'EN': 'No QR codes to scan.', 'TA': 'ஸ்கேன் செய்ய QR குறியீடு இல்லை.'},
+    'SCAN WINDOW': {'EN': 'SCAN WINDOW', 'TA': 'ஸ்கேன் நேரம்'},
+  };
+
+  String _t(String key) {
+    return _i10n[key]?[_selectedLang] ?? key;
+  }
 
   // ── Animations ─────────────────────────────────────────────────────────────
   late AnimationController _pulseCtrl;
@@ -62,6 +89,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     super.initState();
     _selectedCampusCode = widget.campusCode == "ADMIN" ? "KCET01" : widget.campusCode;
 
+    _loadSavedLanguage();
+
     _pulseCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 2000))
       ..repeat(reverse: true);
     _pulseAnim = Tween<double>(begin: 1.0, end: 1.10).animate(
@@ -78,6 +107,24 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     _ringAnim = Tween<double>(begin: 0, end: 2 * math.pi).animate(_ringCtrl);
 
     _fetchInitialData();
+  }
+
+  Future<void> _loadSavedLanguage() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final lang = prefs.getString('user_lang') ?? 'EN';
+      if (mounted) setState(() => _selectedLang = lang);
+    } catch (_) {}
+  }
+
+  Future<void> _toggleLanguage() async {
+    final nextLang = _selectedLang == 'EN' ? 'TA' : 'EN';
+    HapticFeedback.lightImpact();
+    setState(() => _selectedLang = nextLang);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('user_lang', nextLang);
+    } catch (_) {}
   }
 
   @override
@@ -379,10 +426,31 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
             ),
           ),
           const SizedBox(width: 8),
-          const Text("Security Rounds",
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 17)),
+          Text(_t("Security Rounds"),
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 17)),
         ]),
         actions: [
+          GestureDetector(
+            onTap: _toggleLanguage,
+            child: Container(
+              margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: _kAccent.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: _kAccent.withOpacity(0.5)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.translate_rounded, color: _kCyan, size: 14),
+                  const SizedBox(width: 4),
+                  Text(_selectedLang == 'EN' ? 'தமிழ்' : 'English',
+                    style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                ],
+              ),
+            ),
+          ),
           if (widget.isMaster) _topBtn(Icons.assessment_rounded, _showReport),
           _topBtn(Icons.refresh_rounded, () {
             _refreshDebouncer?.cancel();
@@ -508,11 +576,11 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
                 // ── Stats Row ──────────────────────────────────────────────
                 Row(children: [
-                  _statBox("Total QR", "$_totalQrCount", Icons.qr_code_rounded, Colors.white24),
+                  _statBox(_t("Total QR"), "$_totalQrCount", Icons.qr_code_rounded, Colors.white24),
                   const SizedBox(width: 10),
-                  _statBox("Scanned", "$_scannedCount", Icons.check_circle_rounded, _kGreen),
+                  _statBox(_t("Scanned"), "$_scannedCount", Icons.check_circle_rounded, _kGreen),
                   const SizedBox(width: 10),
-                  _statBox("Left", "${_totalQrCount - _scannedCount}", Icons.pending_rounded, _kOrange),
+                  _statBox(_t("Left"), "${_totalQrCount - _scannedCount}", Icons.pending_rounded, _kOrange),
                 ]),
 
                 const SizedBox(height: 12),
@@ -520,14 +588,14 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                 // ── Progress Card ──────────────────────────────────────────
                 _glassCard(child: Column(children: [
                   Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                    const Text("Patrol Progress", style: TextStyle(color: Colors.white60, fontSize: 13, fontWeight: FontWeight.w500)),
+                    Text(_t("Patrol Progress"), style: const TextStyle(color: Colors.white60, fontSize: 13, fontWeight: FontWeight.w500)),
                     _isLoadingStatus
                       ? const SizedBox(width: 16, height: 16,
                           child: CircularProgressIndicator(strokeWidth: 2, color: _kCyan))
                       : Row(mainAxisSize: MainAxisSize.min, children: [
                           Icon(statusIcon, color: statusColor, size: 14),
                           const SizedBox(width: 5),
-                          Text(_patrolStatus, style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 12)),
+                          Text(_t(_patrolStatus), style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 12)),
                         ]),
                   ]),
                   const SizedBox(height: 16),
@@ -554,7 +622,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                       ),
                       const SizedBox(width: 18),
                       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text("$_scannedCount of $_totalQrCount checkpoints",
+                        Text("$_scannedCount of $_totalQrCount ${_t('checkpoints')}",
                           style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
                         const SizedBox(height: 10),
                         AnimatedBuilder(
@@ -603,7 +671,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                             const Icon(Icons.lock_clock_rounded, color: Colors.white),
                             const SizedBox(width: 10),
                             Expanded(child: Text(
-                              widget.isMaster ? "No QR codes to scan." : "SCAN WINDOW $windowText",
+                              widget.isMaster ? _t("No QR codes to scan.") : "${_t('SCAN WINDOW')} $windowText",
                               style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
                             )),
                           ]),
@@ -622,7 +690,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                     fontSize: 13, fontWeight: FontWeight.w600, letterSpacing: 0.5,
                     color: isAvailable ? Colors.white : Colors.white24,
                   ),
-                  child: Text(isAvailable ? "Tap to Start Patrol Scan" : "Scan Not Available"),
+                  child: Text(isAvailable ? _t("Tap to Start Patrol Scan") : _t("Scan Not Available")),
                 ),
 
                 const SizedBox(height: 16),
@@ -671,7 +739,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
             size: 50, color: Colors.white,
           ),
           const SizedBox(height: 4),
-          Text(active ? "SCAN" : "LOCKED",
+          Text(active ? _t("SCAN") : _t("LOCKED"),
             style: TextStyle(
               fontSize: 10, fontWeight: FontWeight.bold,
               color: Colors.white.withOpacity(active ? 0.8 : 0.3),
