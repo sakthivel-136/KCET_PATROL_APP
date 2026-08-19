@@ -426,8 +426,14 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
             ),
           ),
           const SizedBox(width: 8),
-          Text(_t("Security Rounds"),
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 17)),
+          Expanded(
+            child: Text(
+              _t("Security Rounds"),
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
         ]),
         actions: [
           GestureDetector(
@@ -585,67 +591,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
                 const SizedBox(height: 12),
 
-                // ── Progress Card ──────────────────────────────────────────
-                _glassCard(child: Column(children: [
-                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                    Text(_t("Patrol Progress"), style: const TextStyle(color: Colors.white60, fontSize: 13, fontWeight: FontWeight.w500)),
-                    _isLoadingStatus
-                      ? const SizedBox(width: 16, height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: _kCyan))
-                      : Row(mainAxisSize: MainAxisSize.min, children: [
-                          Icon(statusIcon, color: statusColor, size: 14),
-                          const SizedBox(width: 5),
-                          Text(_t(_patrolStatus), style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 12)),
-                        ]),
-                  ]),
-                  const SizedBox(height: 16),
-                  if (!_isLoadingStatus)
-                    Row(children: [
-                      // Radial gauge
-                      AnimatedBuilder(
-                        animation: _progressAnim,
-                        builder: (_, __) => SizedBox(
-                          width: 72, height: 72,
-                          child: CustomPaint(
-                            painter: _RadialGaugePainter(
-                              progress: _progressAnim.value,
-                              color: statusColor,
-                            ),
-                            child: Center(
-                              child: Text(
-                                "${(_progressAnim.value * 100).toInt()}%",
-                                style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 14),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 18),
-                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text("$_scannedCount of $_totalQrCount ${_t('checkpoints')}",
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-                        const SizedBox(height: 10),
-                        AnimatedBuilder(
-                          animation: _progressAnim,
-                          builder: (_, __) => ClipRRect(
-                            borderRadius: BorderRadius.circular(10),
-                            child: LinearProgressIndicator(
-                              value: _progressAnim.value,
-                              minHeight: 8,
-                              backgroundColor: Colors.white10,
-                              valueColor: AlwaysStoppedAnimation<Color>(statusColor),
-                            ),
-                          ),
-                        ),
-                      ])),
-                    ])
-                  else
-                    const Padding(padding: EdgeInsets.all(12),
-                      child: CircularProgressIndicator(color: _kCyan, strokeWidth: 3)),
-                ])),
-
-                const SizedBox(height: 28),
-
                 // ── Scan Button ───────────────────────────────────────────
                 GestureDetector(
                   onTap: () async {
@@ -683,7 +628,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                     ? ScaleTransition(scale: _pulseAnim, child: _buildScanBtn(true))
                     : _buildScanBtn(false),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 AnimatedDefaultTextStyle(
                   duration: const Duration(milliseconds: 300),
                   style: TextStyle(
@@ -692,6 +637,68 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                   ),
                   child: Text(isAvailable ? _t("Tap to Start Patrol Scan") : _t("Scan Not Available")),
                 ),
+
+                const SizedBox(height: 20),
+
+                // ── Progress Card (Below Scan Button) ─────────────────────
+                _glassCard(child: Column(children: [
+                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                    Text(_t("Patrol Progress"), style: const TextStyle(color: Colors.white60, fontSize: 13, fontWeight: FontWeight.w500)),
+                    _isLoadingStatus
+                      ? const SizedBox(width: 16, height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: _kCyan))
+                      : Row(mainAxisSize: MainAxisSize.min, children: [
+                          Icon(statusIcon, color: statusColor, size: 14),
+                          const SizedBox(width: 5),
+                          Text(_t(_patrolStatus), style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 12)),
+                        ]),
+                  ]),
+                  const SizedBox(height: 16),
+                  if (!_isLoadingStatus)
+                    Row(children: [
+                      // Radial gauge
+                      AnimatedBuilder(
+                        animation: _progressAnim,
+                        builder: (_, __) => SizedBox(
+                          width: 68, height: 68,
+                          child: CustomPaint(
+                            painter: _RadialGaugePainter(
+                              progress: _progressAnim.value,
+                              color: statusColor,
+                            ),
+                            child: Center(
+                              child: Text(
+                                "${(_progressAnim.value * 100).toInt()}%",
+                                style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 13),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text("$_scannedCount of $_totalQrCount ${_t('checkpoints')}",
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                          maxLines: 1, overflow: TextOverflow.ellipsis),
+                        const SizedBox(height: 8),
+                        AnimatedBuilder(
+                          animation: _progressAnim,
+                          builder: (_, __) => ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: LinearProgressIndicator(
+                              value: _progressAnim.value,
+                              minHeight: 8,
+                              backgroundColor: Colors.white10,
+                              valueColor: AlwaysStoppedAnimation<Color>(statusColor),
+                            ),
+                          ),
+                        ),
+                      ])),
+                    ])
+                  else
+                    const Padding(padding: EdgeInsets.all(12),
+                      child: CircularProgressIndicator(color: _kCyan, strokeWidth: 3)),
+                ])),
 
                 const SizedBox(height: 16),
               ]),
