@@ -523,10 +523,10 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(color: Colors.white12),
                           ),
-                          child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                            Icon(Icons.group_rounded, size: 12, color: Colors.white54),
-                            SizedBox(width: 4),
-                            Text("Shifts", style: TextStyle(fontSize: 11, color: Colors.white54)),
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            const Icon(Icons.group_rounded, size: 12, color: Colors.white54),
+                            const SizedBox(width: 4),
+                            Text(_t("Shifts"), style: const TextStyle(fontSize: 11, color: Colors.white54)),
                           ]),
                         ),
                       ),

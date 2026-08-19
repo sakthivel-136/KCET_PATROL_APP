@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -108,14 +109,51 @@ class _LoginScreenState extends State<LoginScreen> {
   final List<String> _pin = [];
   bool _loading = false;
   bool _shakeError = false;
+  String _selectedLang = "EN"; // 'EN' or 'TA'
+
+  static const Map<String, Map<String, String>> _i10n = {
+    'KCET Security': {'EN': 'KCET Security', 'TA': 'கேசிஇடி பாதுகாப்பு'},
+    'Patrol Monitoring System': {'EN': 'Patrol Monitoring System', 'TA': 'ரோந்து கண்காணிப்பு அமைப்பு'},
+    'Enter your 4-digit Security PIN': {'EN': 'Enter your 4-digit Security PIN', 'TA': 'உங்கள் 4 இலக்க பாதுகாப்பு பின்னை உள்ளிடவும்'},
+    'Verifying...': {'EN': 'Verifying...', 'TA': 'சரிபார்க்கிறது...'},
+    'Powered by KCET • v2.0': {'EN': 'Powered by KCET • v2.0', 'TA': 'கேசிஇடி பெருமையுடன் வழங்கும் • பதிப்பு 2.0'},
+    'No Internet Connection': {'EN': 'No Internet Connection', 'TA': 'இணைய இணைப்பு இல்லை'},
+    'Invalid PIN — try again': {'EN': 'Invalid PIN — try again', 'TA': 'தவறான பின் — மீண்டும் முயற்சிக்கவும்'},
+    'Server error. Check connection.': {'EN': 'Server error. Check connection.', 'TA': 'சேவையக பிழை. இணைப்பைச் சரிபார்க்கவும்.'},
+    'Access Denied': {'EN': 'Access Denied', 'TA': 'அனுமதி மறுக்கப்பட்டது'},
+    'OK': {'EN': 'OK', 'TA': 'சரி'},
+  };
+
+  String _t(String key) {
+    return _i10n[key]?[_selectedLang] ?? key;
+  }
 
   @override
   void initState() {
     super.initState();
+    _loadSavedLanguage();
     Future.delayed(const Duration(milliseconds: 500), () async {
       await _requestNotificationPermission();
       await _scheduleNotifications();
     });
+  }
+
+  Future<void> _loadSavedLanguage() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final lang = prefs.getString('user_lang') ?? 'EN';
+      if (mounted) setState(() => _selectedLang = lang);
+    } catch (_) {}
+  }
+
+  Future<void> _toggleLanguage() async {
+    final nextLang = _selectedLang == 'EN' ? 'TA' : 'EN';
+    HapticFeedback.lightImpact();
+    setState(() => _selectedLang = nextLang);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('user_lang', nextLang);
+    } catch (_) {}
   }
 
   void _onKey(String val) {
@@ -321,13 +359,40 @@ class _LoginScreenState extends State<LoginScreen> {
       body: SafeArea(
         child: Column(
           children: [
+            // Top Bar with Translate Button
+            Padding(
+              padding: const EdgeInsets.only(top: 8, right: 16),
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: GestureDetector(
+                  onTap: _toggleLanguage,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: _kAccent.withOpacity(0.18),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: _kAccent.withOpacity(0.4)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.translate_rounded, color: _kAccent2, size: 14),
+                        const SizedBox(width: 6),
+                        Text(_selectedLang == 'EN' ? 'தமிழ்' : 'English',
+                          style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
             Expanded(
               child: SingleChildScrollView(
                 physics: const BouncingScrollPhysics(),
                 padding: const EdgeInsets.symmetric(horizontal: 28),
                 child: Column(
                   children: [
-                    const SizedBox(height: 40),
+                    const SizedBox(height: 20),
 
                     // Clean & Simple Logo Icon
                     Container(
@@ -346,12 +411,12 @@ class _LoginScreenState extends State<LoginScreen> {
 
                     const SizedBox(height: 18),
 
-                    const Text("KCET Security", style: TextStyle(
+                    Text(_t("KCET Security"), style: const TextStyle(
                       fontSize: 24, fontWeight: FontWeight.bold,
                       color: Colors.white, letterSpacing: 0.5,
                     )),
                     const SizedBox(height: 4),
-                    Text("Patrol Monitoring System",
+                    Text(_t("Patrol Monitoring System"),
                       style: TextStyle(fontSize: 12, color: Colors.white.withOpacity(0.5), letterSpacing: 1)),
 
                     const SizedBox(height: 24),
@@ -372,13 +437,13 @@ class _LoginScreenState extends State<LoginScreen> {
                       ]),
                     ),
 
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 28),
 
                     // PIN Dots
                     _buildPinDisplay(),
                     const SizedBox(height: 12),
                     Text(
-                      _loading ? "Verifying..." : "Enter your 4-digit Security PIN",
+                      _t(_loading ? "Verifying..." : "Enter your 4-digit Security PIN"),
                       style: TextStyle(fontSize: 13, color: Colors.white.withOpacity(0.5)),
                     ),
                     const SizedBox(height: 16),
@@ -390,7 +455,7 @@ class _LoginScreenState extends State<LoginScreen> {
             // Numeric Keypad
             _buildPinPad(),
             const SizedBox(height: 12),
-            Text("Powered by KCET • v2.0",
+            Text(_t("Powered by KCET • v2.0"),
               style: TextStyle(fontSize: 11, color: Colors.white.withOpacity(0.3))),
             const SizedBox(height: 16),
           ],

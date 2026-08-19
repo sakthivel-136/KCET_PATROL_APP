@@ -1,5 +1,3 @@
-// scan_page.dart
-
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -10,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'round_utils.dart';
 
@@ -55,6 +54,22 @@ class _ScanningPageState extends State<ScanningPage> with TickerProviderStateMix
   Timer? _syncTimer;
 
   DateTime? _lastScanTime; // cooldown
+  String _selectedLang = "EN";
+
+  static const Map<String, Map<String, String>> _i10n = {
+    'QR Patrol Scan': {'EN': 'QR Patrol Scan', 'TA': 'QR ரோந்து ஸ்கேன்'},
+    'OPEN': {'EN': 'OPEN', 'TA': 'திறந்தது'},
+    'CLOSED': {'EN': 'CLOSED', 'TA': 'மூடப்பட்டது'},
+    'Done': {'EN': 'Done', 'TA': 'முடிந்தது'},
+    'Scan Again': {'EN': 'Scan Again', 'TA': 'மீண்டும் ஸ்கேன் செய்'},
+    'Wait...': {'EN': 'Wait...', 'TA': 'காத்திருக்கவும்...'},
+    'Pending': {'EN': 'Pending', 'TA': 'நிலுவையில் உள்ளது'},
+    'Checkpoint Scanned!': {'EN': 'Checkpoint Scanned!', 'TA': 'சோதனை புள்ளி ஸ்கேன் செய்யப்பட்டது!'},
+  };
+
+  String _t(String key) {
+    return _i10n[key]?[_selectedLang] ?? key;
+  }
 
   // ── Animations ──────────────────────────────────────────────────────────────
   late AnimationController _scanLineCtrl;
@@ -70,6 +85,7 @@ class _ScanningPageState extends State<ScanningPage> with TickerProviderStateMix
   @override
   void initState() {
     super.initState();
+    _loadSavedLanguage();
     _currentRound = _getRoundStart();
     final h = DateTime.now().hour;
     _torchOn = (h >= 18 || h < 6);
@@ -89,6 +105,14 @@ class _ScanningPageState extends State<ScanningPage> with TickerProviderStateMix
     WidgetsBinding.instance.addPostFrameCallback((_) => _requestRequiredPermissions());
     _fetchCheckpoints();
     _syncTimer = Timer.periodic(const Duration(seconds: 20), (_) => _fetchCheckpoints());
+  }
+
+  Future<void> _loadSavedLanguage() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final lang = prefs.getString('user_lang') ?? 'EN';
+      if (mounted) setState(() => _selectedLang = lang);
+    } catch (_) {}
   }
 
   // ================= SLOT =================
@@ -657,7 +681,7 @@ class _ScanningPageState extends State<ScanningPage> with TickerProviderStateMix
         iconTheme: const IconThemeData(color: Colors.white),
         title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(
-            _currentRoundLabel.isEmpty ? 'QR Patrol Scan' : _currentRoundLabel,
+            _currentRoundLabel.isEmpty ? _t('QR Patrol Scan') : _currentRoundLabel,
             style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
           ),
           Text(_windowLabel(), style: const TextStyle(color: Colors.white38, fontSize: 11)),
@@ -684,7 +708,7 @@ class _ScanningPageState extends State<ScanningPage> with TickerProviderStateMix
               ),
               const SizedBox(width: 4),
               Text(
-                _scanAvailable ? 'OPEN' : 'CLOSED',
+                _t(_scanAvailable ? 'OPEN' : 'CLOSED'),
                 style: TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.bold,
@@ -961,7 +985,7 @@ class _ScanningPageState extends State<ScanningPage> with TickerProviderStateMix
                                         color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
                                     ),
                                     icon,
-                                    Text(lbl, style: TextStyle(
+                                    Text(_t(lbl), style: TextStyle(
                                       fontSize: 9, fontWeight: FontWeight.w600,
                                       color: Colors.white.withOpacity(0.6),
                                       letterSpacing: 0.3,
