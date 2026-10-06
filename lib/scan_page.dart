@@ -124,10 +124,7 @@ class _ScanningPageState extends State<ScanningPage> with TickerProviderStateMix
   }
 
   bool _isValidTime() {
-    final now = DateTime.now();
-
-    final start = _currentRound;
-    return isWithinPatrolScanWindow(now, start);
+    return _scanAvailable;
   }
 
   String _windowLabel() {
@@ -212,7 +209,7 @@ class _ScanningPageState extends State<ScanningPage> with TickerProviderStateMix
           final hasBeenScanned = existing != null &&
               ((existing['scanned_once'] == true) || (existing['waiting_done'] == true));
 
-          return {
+          return <String, dynamic>{
             ...e,
             'completed': success.contains(id),
             'scanned_once': hasBeenScanned
