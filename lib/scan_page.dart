@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -46,6 +47,7 @@ class _ScanningPageState extends State<ScanningPage> with TickerProviderStateMix
 
   late DateTime _currentRound;
   String _currentRoundLabel = '';
+  int _currentRoundNumber = 1;
   DateTime? _currentWindowStart;
   DateTime? _currentWindowEnd;
   bool _scanAvailable = false;
@@ -162,18 +164,26 @@ class _ScanningPageState extends State<ScanningPage> with TickerProviderStateMix
       final roundInfo = getCurrentPatrolRound(now);
       _currentRound = roundInfo['currentRoundTime'] as DateTime;
       _currentRoundLabel = roundInfo['currentRoundLabel'] as String;
+      _currentRoundNumber = roundInfo['currentRoundNumber'] as int;
       _currentWindowStart = roundInfo['scanWindowOpen'] as DateTime;
       _currentWindowEnd = roundInfo['scanWindowClose'] as DateTime;
       _scanAvailable = roundInfo['isActive'] as bool;
-      final client = Supabase.instance.client;
+      final prefs = await SharedPreferences.getInstance();
+      final qrStr = prefs.getString('cached_qrs');
+      List<dynamic> qrData = [];
+      if (qrStr != null) {
+        qrData = jsonDecode(qrStr);
+        qrData = qrData.where((q) => q['status'] == 'active').toList();
+      } else {
+        // Fallback to DB if cache fails
+        qrData = await Supabase.instance.client
+            .from('qr')
+            .select()
+            .eq('campus_code', widget.campusCode)
+            .eq('status', 'active');
+      }
 
-      final qrData = await client
-          .from('qr')
-          .select()
-          .eq('campus_code', widget.campusCode)
-          .eq('status', 'active');
-
-      final scanData = await client
+      final scanData = await Supabase.instance.client
           .from('scanning_details')
           .select('qr_id,status')
           .eq('campus_code', widget.campusCode)
@@ -406,6 +416,11 @@ class _ScanningPageState extends State<ScanningPage> with TickerProviderStateMix
     _lastScanTime = now;
 
     if (_isProcessing) return;
+    
+    if (!_scanAvailable) {
+      _msg("SCANNING IS NOT PERMITTED RIGHT NOW", Colors.red);
+      return;
+    }
 
     final raw = capture.barcodes.first.rawValue ?? '';
     final qrId = _norm(raw);
@@ -505,6 +520,8 @@ class _ScanningPageState extends State<ScanningPage> with TickerProviderStateMix
         'campus_code': widget.campusCode,
         'scan_time': DateTime.now().toUtc().toIso8601String(),
         'round_slot': _currentRound.toUtc().toIso8601String(),
+        'round_number': _currentRoundNumber,
+        'round_time': _currentRoundLabel,
         'status': 'SUCCESS',
       });
 
@@ -561,6 +578,8 @@ class _ScanningPageState extends State<ScanningPage> with TickerProviderStateMix
         'campus_code': widget.campusCode,
         'scan_time': DateTime.now().toUtc().toIso8601String(),
         'round_slot': _currentRound.toUtc().toIso8601String(),
+        'round_number': _currentRoundNumber,
+        'round_time': _currentRoundLabel,
         'status': 'MISSED',
       });
 

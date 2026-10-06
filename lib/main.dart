@@ -9,6 +9,8 @@ import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 import 'package:intl/intl.dart';
 import 'home_page.dart';
 import 'round_utils.dart';
@@ -203,7 +205,7 @@ class _LoginScreenState extends State<LoginScreen> {
         admin = await db.from('login_info').select('name,role')
             .eq('user_pin', pin).eq('is_active', true).maybeSingle();
       } catch (_) {}
-      if (admin != null) { _goHome(admin['name'], 'ADMIN', true, true); return; }
+      if (admin != null) { await _goHome(admin['name'], 'ADMIN', true, true); return; }
 
       final guard = await db.from('security_users')
           .select('security_id,security_name,campus,role')
@@ -244,7 +246,7 @@ class _LoginScreenState extends State<LoginScreen> {
             }
           } catch (_) {}
         }
-        _goHome(guard['security_name'], guard['campus'] ?? 'KCET01', guard['role'] == 'ADMIN', true);
+        await _goHome(guard['security_name'], guard['campus'] ?? 'KCET01', guard['role'] == 'ADMIN', true);
         return;
       }
       HapticFeedback.heavyImpact();
@@ -318,7 +320,20 @@ class _LoginScreenState extends State<LoginScreen> {
     });
   }
 
-  void _goHome(String name, String campus, bool isAdmin, bool canScan) {
+  Future<void> _goHome(String name, String campus, bool isAdmin, bool canScan) async {
+    try {
+      final db = Supabase.instance.client;
+      final roundsData = await db.from('patrol_rounds').select().order('round_number', ascending: true);
+      final qrData = await db.from('qr').select().eq('campus_code', campus);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('cached_rounds', jsonEncode(roundsData));
+      await prefs.setString('cached_qrs', jsonEncode(qrData));
+      await loadCachedRounds();
+    } catch (e) {
+      debugPrint('Error caching data: $e');
+    }
+
+    if (!mounted) return;
     Navigator.pushReplacementNamed(context, '/home', arguments: {
       'guardName': name, 'campusCode': campus, 'isMaster': isAdmin, 'canScan': canScan,
     });

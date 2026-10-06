@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class PatrolRound {
   final DateTime time;
@@ -8,7 +10,36 @@ class PatrolRound {
 
   PatrolRound(this.time, this.label, this.round);
 }
-// Generate 12 rounds spaced 2 hours apart (e.g. 12:00 AM, 2:00 AM, 4:00 AM, etc.)
+
+class DbPatrolRound {
+  final int roundNumber;
+  final String startTime;
+  final String endTime;
+
+  DbPatrolRound({required this.roundNumber, required this.startTime, required this.endTime});
+
+  factory DbPatrolRound.fromJson(Map<String, dynamic> json) {
+    return DbPatrolRound(
+      roundNumber: json['round_number'],
+      startTime: json['start_time'].toString().substring(0, 5),
+      endTime: json['end_time'].toString().substring(0, 5),
+    );
+  }
+}
+
+List<DbPatrolRound> _cachedDbRounds = [];
+
+Future<void> loadCachedRounds() async {
+  final prefs = await SharedPreferences.getInstance();
+  final jsonStr = prefs.getString('cached_rounds');
+  if (jsonStr != null) {
+    final List<dynamic> list = jsonDecode(jsonStr);
+    _cachedDbRounds = list.map((e) => DbPatrolRound.fromJson(e)).toList();
+    _cachedDbRounds.sort((a, b) => a.roundNumber.compareTo(b.roundNumber));
+  }
+}
+
+// Fallback legacy method if DB is empty
 List<PatrolRound> buildPatrolRounds(DateTime now) {
   final localDay = DateTime(now.year, now.month, now.day);
   final cycleStart = localDay;
@@ -28,34 +59,115 @@ List<PatrolRound> buildPatrolRounds(DateTime now) {
   );
 }
 
-DateTime getScanWindowStart(DateTime roundStart) {
-  // Opens 45 minutes past the round start hour (e.g. 6:45 AM for 6:00 AM round)
-  return roundStart.add(const Duration(minutes: 45));
-}
-
-DateTime getScanWindowEnd(DateTime roundStart) {
-  // Closes 30 minutes past the next hour (e.g. 7:30 AM for 6:00 AM round)
-  return roundStart.add(const Duration(hours: 1, minutes: 30));
-}
-
-bool isWithinPatrolScanWindow(DateTime now, DateTime roundStart) {
-  final start = getScanWindowStart(roundStart);
-  final end = getScanWindowEnd(roundStart);
-  return !now.isBefore(start) && now.isBefore(end);
+DateTime _parseTime(DateTime base, String timeStr) {
+  final parts = timeStr.split(':');
+  return DateTime(base.year, base.month, base.day, int.parse(parts[0]), int.parse(parts[1]));
 }
 
 Map<String, dynamic> getCurrentPatrolRound(DateTime now) {
-  final rounds = buildPatrolRounds(now);
+  // If no cache, fall back to legacy behavior
+  if (_cachedDbRounds.isEmpty) {
+    return _getLegacyPatrolRound(now);
+  }
+
+  final base = DateTime(now.year, now.month, now.day);
+  bool foundActive = false;
+  DbPatrolRound? currentDbRound;
+  DateTime? activeStart;
+  DateTime? activeEnd;
   
-  PatrolRound current = rounds.first;
+  // Find active round
+  for (var r in _cachedDbRounds) {
+     var start = _parseTime(base, r.startTime);
+     var end = _parseTime(base, r.endTime);
+     
+     // Handle cross-midnight rounds
+     if (end.isBefore(start)) {
+       if (now.hour < end.hour) {
+           start = start.subtract(const Duration(days: 1));
+       } else {
+           end = end.add(const Duration(days: 1));
+       }
+     }
+     
+     if (!now.isBefore(start) && now.isBefore(end)) {
+        foundActive = true;
+        currentDbRound = r;
+        activeStart = start;
+        activeEnd = end;
+        break;
+     }
+  }
+
+  // If no round is currently active, find the NEXT upcoming round
+  if (!foundActive) {
+    for (var r in _cachedDbRounds) {
+       var start = _parseTime(base, r.startTime);
+       var end = _parseTime(base, r.endTime);
+       if (end.isBefore(start)) {
+         if (now.hour < end.hour) start = start.subtract(const Duration(days: 1));
+         else end = end.add(const Duration(days: 1));
+       }
+       
+       if (now.isBefore(start)) {
+         currentDbRound = r;
+         activeStart = start;
+         activeEnd = end;
+         break;
+       }
+    }
+    
+    // If still null, it must be the first round of the next day
+    if (currentDbRound == null && _cachedDbRounds.isNotEmpty) {
+      currentDbRound = _cachedDbRounds.first;
+      var start = _parseTime(base.add(const Duration(days: 1)), currentDbRound.startTime);
+      var end = _parseTime(base.add(const Duration(days: 1)), currentDbRound.endTime);
+      if (end.isBefore(start)) end = end.add(const Duration(days: 1));
+      
+      activeStart = start;
+      activeEnd = end;
+    }
+  }
+
+  // Next Round calc
+  int currentIndex = _cachedDbRounds.indexOf(currentDbRound!);
+  int nextIndex = (currentIndex + 1) % _cachedDbRounds.length;
+  DbPatrolRound nextDbRound = _cachedDbRounds[nextIndex];
+  DateTime nextStart = _parseTime(
+    nextIndex <= currentIndex ? base.add(const Duration(days: 1)) : base, 
+    nextDbRound.startTime
+  );
+
+  return {
+    'current': PatrolRound(activeStart!, currentDbRound.startTime, currentDbRound.roundNumber),
+    'next': PatrolRound(nextStart, nextDbRound.startTime, nextDbRound.roundNumber),
+    'currentRoundTime': activeStart,
+    'nextRoundTime': nextStart,
+    'currentRoundLabel': '${currentDbRound.startTime} - ${currentDbRound.endTime}',
+    'currentRoundNumber': currentDbRound.roundNumber,
+    'scanWindowOpen': activeStart,
+    'scanWindowClose': activeEnd,
+    'isActive': foundActive,
+  };
+}
+
+Map<String, dynamic> _getLegacyPatrolRound(DateTime now) {
+  final todayRounds = buildPatrolRounds(now);
+  final tomorrowRounds = buildPatrolRounds(now.add(const Duration(days: 1)));
+  final allRounds = [...todayRounds, ...tomorrowRounds];
+  
+  PatrolRound current = allRounds.first;
   int currentIndex = 0;
   bool foundActive = false;
 
-  for (var i = 0; i < rounds.length; i++) {
-    final start = getScanWindowStart(rounds[i].time);
-    final end = getScanWindowEnd(rounds[i].time);
+  DateTime getScanWindowStart(DateTime roundStart) => roundStart.add(const Duration(minutes: 45));
+  DateTime getScanWindowEnd(DateTime roundStart) => roundStart.add(const Duration(hours: 1, minutes: 30));
+
+  for (var i = 0; i < allRounds.length; i++) {
+    final start = getScanWindowStart(allRounds[i].time);
+    final end = getScanWindowEnd(allRounds[i].time);
     if (!now.isBefore(start) && now.isBefore(end)) {
-      current = rounds[i];
+      current = allRounds[i];
       currentIndex = i;
       foundActive = true;
       break;
@@ -63,21 +175,21 @@ Map<String, dynamic> getCurrentPatrolRound(DateTime now) {
   }
 
   if (!foundActive) {
-    for (var i = 0; i < rounds.length; i++) {
-      final start = getScanWindowStart(rounds[i].time);
+    for (var i = 0; i < allRounds.length; i++) {
+      final start = getScanWindowStart(allRounds[i].time);
       if (now.isBefore(start)) {
-        current = rounds[i];
+        current = allRounds[i];
         currentIndex = i;
         break;
       }
-      current = rounds[i];
+      current = allRounds[i];
       currentIndex = i;
     }
   }
 
-  final next = currentIndex < rounds.length - 1
-      ? rounds[currentIndex + 1]
-      : rounds.first;
+  final next = currentIndex < allRounds.length - 1
+      ? allRounds[currentIndex + 1]
+      : allRounds.first;
 
   return {
     'current': current,
