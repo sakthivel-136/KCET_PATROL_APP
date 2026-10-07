@@ -52,11 +52,27 @@ Future<void> loadCachedRounds() async {
   }
 }
 
-// Fallback legacy method if DB is empty
 List<PatrolRound> buildPatrolRounds(DateTime now) {
-  final localDay = DateTime(now.year, now.month, now.day);
-  final cycleStart = localDay;
+  final base = DateTime(now.year, now.month, now.day);
+  
+  if (_cachedDbRounds.isNotEmpty) {
+    return _cachedDbRounds.map((r) {
+      final start = _parseTime(base, r.startTime);
+      final end = _parseTime(base, r.endTime);
+      
+      final startLbl = DateFormat('h:mm a').format(start);
+      final endLbl = DateFormat('h:mm a').format(end);
+      
+      return PatrolRound(
+        start,
+        '$startLbl to $endLbl',
+        r.roundNumber
+      );
+    }).toList();
+  }
 
+  // Fallback legacy method if DB is empty
+  final cycleStart = base;
   final slots = List<DateTime>.generate(
     12,
     (index) => DateTime(cycleStart.year, cycleStart.month, cycleStart.day, index * 2, 0),
@@ -151,9 +167,13 @@ Map<String, dynamic> getCurrentPatrolRound(DateTime now) {
     nextDbRound.startTime
   );
 
+  final startLbl = DateFormat('h:mm a').format(activeStart!);
+  final endLbl = DateFormat('h:mm a').format(activeEnd!);
+  final nStartLbl = DateFormat('h:mm a').format(nextStart);
+  
   return {
-    'current': PatrolRound(activeStart!, currentDbRound.startTime, currentDbRound.roundNumber),
-    'next': PatrolRound(nextStart, nextDbRound.startTime, nextDbRound.roundNumber),
+    'current': PatrolRound(activeStart, '$startLbl to $endLbl', currentDbRound.roundNumber),
+    'next': PatrolRound(nextStart, nStartLbl, nextDbRound.roundNumber),
     'currentRoundTime': activeStart,
     'nextRoundTime': nextStart,
     'currentRoundLabel': '${currentDbRound.startTime} - ${currentDbRound.endTime}',

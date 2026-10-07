@@ -272,7 +272,9 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
              status = 'current';
              guard = scannedData.isNotEmpty ? (scannedData.first['guard_name'] ?? widget.guardName) : widget.guardName;
           } else {
-             status  = seen.length >= total ? 'success' : 'missed';
+             if (seen.length >= total) status = 'success';
+             else if (seen.length >= total / 2 && seen.length > 0) status = 'partial';
+             else status = 'missed';
              guard   = scannedData.isNotEmpty ? (scannedData.first['guard_name'] ?? '') : '';
           }
         } else {
@@ -360,9 +362,9 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       final allocs = aRes.statusCode == 200 ? jsonDecode(aRes.body) as List : [];
       if (!mounted) return;
       Navigator.pop(context);
-      final guards    = List<Map<String,dynamic>>.from(users);
-      final shiftList = List<Map<String,dynamic>>.from(shifts);
-      final allocList = List<Map<String,dynamic>>.from(allocs);
+      final guards    = users.map((x) => Map<String,dynamic>.from(x as Map)).toList();
+      final shiftList = shifts.map((x) => Map<String,dynamic>.from(x as Map)).toList();
+      final allocList = allocs.map((x) => Map<String,dynamic>.from(x as Map)).toList();
       showModalBottomSheet(
         context: context, isScrollControlled: true,
         backgroundColor: Colors.transparent,
@@ -1009,11 +1011,12 @@ class _ReportSheetState extends State<_ReportSheet> with SingleTickerProviderSta
   @override
   Widget build(BuildContext context) {
     final success = widget.roundSlots.where((s) => s['status'] == 'success').length;
+    final partial = widget.roundSlots.where((s) => s['status'] == 'partial').length;
     final missed  = widget.roundSlots.where((s) => s['status'] == 'missed').length;
     final active  = widget.roundSlots.where((s) => s['status'] == 'current').length;
     final future  = widget.roundSlots.where((s) => s['status'] == 'future').length;
     final total   = widget.roundSlots.length;
-    final rate    = total > 0 ? (success / total * 100) : 0.0;
+    final rate    = total > 0 ? ((success + (partial * 0.5)) / total * 100) : 0.0;
 
     return DraggableScrollableSheet(
       initialChildSize: 0.92, minChildSize: 0.5, maxChildSize: 0.97,
