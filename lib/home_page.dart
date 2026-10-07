@@ -166,7 +166,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   Future<void> _fetchCampusName() async {
     try {
       if (_selectedCampusCode == "ADMIN") { if (mounted) setState(() => _campusName = "Administrator"); return; }
-      if (mounted) setState(() => _campusName = "KCET MAIN CAMPUS");
+      if (mounted) setState(() => _campusName = "KAMARAJ COLLEGE MAIN CAMPUS");
     } catch (_) { if (mounted) setState(() => _campusName = "Unknown Campus"); }
   }
 

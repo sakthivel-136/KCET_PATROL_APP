@@ -106,7 +106,7 @@ class _LoginScreenState extends State<LoginScreen> {
   String _selectedLang = "EN"; // 'EN' or 'TA'
 
   static const Map<String, Map<String, String>> _i10n = {
-    'KCET Security': {'EN': 'KCET Security', 'TA': 'கேசிஇடி பாதுகாப்பு'},
+    'KAMARAJ COLLEGE SECURITY': {'EN': 'KAMARAJ COLLEGE SECURITY', 'TA': 'கேசிஇடி பாதுகாப்பு'},
     'Patrol Monitoring System': {'EN': 'Patrol Monitoring System', 'TA': 'ரோந்து கண்காணிப்பு அமைப்பு'},
     'Enter your 4-digit Security PIN': {'EN': 'Enter your 4-digit Security PIN', 'TA': 'உங்கள் 4 இலக்க பாதுகாப்பு பின்னை உள்ளிடவும்'},
     'Verifying...': {'EN': 'Verifying...', 'TA': 'சரிபார்க்கிறது...'},
@@ -392,7 +392,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
                     const SizedBox(height: 18),
 
-                    Text(_t("KCET Security"), style: const TextStyle(
+                    Text(_t("KAMARAJ COLLEGE SECURITY"), style: const TextStyle(
                       fontSize: 24, fontWeight: FontWeight.bold,
                       color: Colors.white, letterSpacing: 0.5,
                     )),
