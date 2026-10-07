@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:http/http.dart' as http;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
@@ -198,57 +198,26 @@ class _LoginScreenState extends State<LoginScreen> {
     if (pin.length != 4) return;
     if (!await _isOnline()) { _showError("No Internet Connection"); return; }
     setState(() => _loading = true);
-    final db = Supabase.instance.client;
+    final apiUrl = 'https://kcet-patrol-api.kcet-patrol-hq.workers.dev/api';
     try {
-      Map<String, dynamic>? admin;
-      try {
-        admin = await db.from('login_info').select('name,role')
-            .eq('user_pin', pin).eq('is_active', true).maybeSingle();
-      } catch (_) {}
-      if (admin != null) { await _goHome(admin['name'], 'ADMIN', true, true); return; }
-
-      final guard = await db.from('security_users')
-          .select('security_id,security_name,campus,role')
-          .eq('security_password', pin).maybeSingle();
-
-      if (guard != null) {
-        if (guard['role'] != 'ADMIN') {
-          try {
-            final allocations = await db.from('shift_allocations')
-                .select('shift_id, shifts(start_time, end_time)')
-                .eq('security_id', guard['security_id']);
-            if (allocations != null && allocations.isNotEmpty) {
-              bool anyActive = false;
-              String hoursMsg = "";
-              for (var a in allocations) {
-                final s = a['shifts'];
-                if (s != null) {
-                  final st = s['start_time'] as String?;
-                  final en = s['end_time'] as String?;
-                  if (st != null && en != null) {
-                    final now = DateTime.now();
-                    final cur = now.hour * 60 + now.minute;
-                    final sP = st.split(':'); final eP = en.split(':');
-                    if (sP.length >= 2 && eP.length >= 2) {
-                      final sm = int.parse(sP[0]) * 60 + int.parse(sP[1]);
-                      final em = int.parse(eP[0]) * 60 + int.parse(eP[1]);
-                      final within = sm <= em ? (cur >= sm && cur <= em) : (cur >= sm || cur <= em);
-                      if (within) { anyActive = true; break; }
-                      if (hoursMsg.isNotEmpty) hoursMsg += '\n';
-                      hoursMsg += '• $st to $en';
-                    }
-                  }
-                }
-              }
-              if (!anyActive) { _showShiftError("Outside your shift hours!\n\nAllowed:\n$hoursMsg"); return; }
-            } else {
-              _showShiftError("No shifts allocated for today."); return;
-            }
-          } catch (_) {}
+      
+      final res = await http.post(
+        Uri.parse('$apiUrl/login'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'pin': pin})
+      );
+      
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        if (data['role'] == 'ADMIN') {
+          await _goHome(data['name'] ?? 'Admin', 'ADMIN', true, true);
+          return;
+        } else {
+          await _goHome(data['security_name'] ?? 'Guard', data['campus'] ?? 'KCET01', false, true);
+          return;
         }
-        await _goHome(guard['security_name'], guard['campus'] ?? 'KCET01', guard['role'] == 'ADMIN', true);
-        return;
       }
+
       HapticFeedback.heavyImpact();
       setState(() => _shakeError = true);
       _triggerShake();
@@ -322,9 +291,13 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _goHome(String name, String campus, bool isAdmin, bool canScan) async {
     try {
-      final db = Supabase.instance.client;
-      final roundsData = await db.from('patrol_rounds').select().order('round_number', ascending: true);
-      final qrData = await db.from('qr').select().eq('campus_code', campus);
+      final apiUrl = 'https://kcet-patrol-api.kcet-patrol-hq.workers.dev/api';
+      
+      final roundsRes = await http.get(Uri.parse('$apiUrl/rounds'));
+      final roundsData = jsonDecode(roundsRes.body);
+      final qrRes = await http.get(Uri.parse('$apiUrl/qrs/$campus'));
+      final qrData = jsonDecode(qrRes.body);
+
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('cached_rounds', jsonEncode(roundsData));
       await prefs.setString('cached_qrs', jsonEncode(qrData));

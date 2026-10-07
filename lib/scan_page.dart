@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -181,13 +181,11 @@ class _ScanningPageState extends State<ScanningPage> with TickerProviderStateMix
             .eq('status', 'active');
       }
 
-      final scanData = await Supabase.instance.client
-          .from('scanning_details')
-          .select('qr_id,status')
-          .eq('campus_code', widget.campusCode)
-          .eq('round_number', _currentRoundNumber)
-          .gte('scan_time', _currentRound.toUtc().toIso8601String())
-          .lte('scan_time', _currentRound.add(const Duration(hours: 12)).toUtc().toIso8601String());
+      
+      final uri = Uri.parse('https://kcet-patrol-api.kcet-patrol-hq.workers.dev/api/scans/${widget.campusCode}?round_number=${_currentRoundNumber}&scan_time_gte=${_currentRound.toUtc().toIso8601String()}&scan_time_lte=${_currentRound.add(const Duration(hours: 12)).toUtc().toIso8601String()}');
+      final res = await http.get(uri);
+      final scanData = res.statusCode == 200 ? jsonDecode(res.body) : [];
+
 
       final Set<String> success = {};
 
@@ -242,16 +240,12 @@ class _ScanningPageState extends State<ScanningPage> with TickerProviderStateMix
 
   Future<bool> _existsSuccess(String qr) async {
     try {
-      final res = await Supabase.instance.client
-          .from('scanning_details')
-          .select('id')
-          .eq('campus_code', widget.campusCode)
-          .eq('qr_id', qr)
-          .eq('round_number', _currentRoundNumber)
-          .gte('scan_time', _currentRound.toUtc().toIso8601String())
-          .lte('scan_time', _currentRound.add(const Duration(hours: 12)).toUtc().toIso8601String())
-          .eq('status', 'SUCCESS')
-          .maybeSingle();
+      
+      final uri = Uri.parse('https://kcet-patrol-api.kcet-patrol-hq.workers.dev/api/scans/${widget.campusCode}?qr_id=$qr&round_number=${_currentRoundNumber}&scan_time_gte=${_currentRound.toUtc().toIso8601String()}&scan_time_lte=${_currentRound.add(const Duration(hours: 12)).toUtc().toIso8601String()}');
+      final r = await http.get(uri);
+      final list = r.statusCode == 200 ? jsonDecode(r.body) as List : [];
+      final res = list.where((e) => e['status'] == 'SUCCESS').isNotEmpty ? list.first : null;
+
 
       if (res != null) {
         debugPrint("ExistsSuccess true: ${res['id']}");
@@ -507,15 +501,13 @@ class _ScanningPageState extends State<ScanningPage> with TickerProviderStateMix
       }
 
       // Delete any previous status record (like MISSED) for this checkpoint and round slot to allow overwriting/updating
-      await Supabase.instance.client
-          .from('scanning_details')
-          .delete()
-          .eq('qr_id', p['qr_id'])
-          .eq('round_number', _currentRoundNumber)
-          .gte('scan_time', _currentRound.toUtc().toIso8601String())
-          .lte('scan_time', _currentRound.add(const Duration(hours: 12)).toUtc().toIso8601String());
+      
+      final payload = {
+        'qr_id': p['qr_id'],
+        'round_number': _currentRoundNumber,
+        'scan_time_start': _currentRound.toUtc().toIso8601String(),
+        'scan_time_end': _currentRound.add(const Duration(hours: 12)).toUtc().toIso8601String(),
 
-      await Supabase.instance.client.from('scanning_details').insert({
         'guard_name': widget.guardName,
         'qr_id': p['qr_id'],
         'qr_name': p['qr_name'],
@@ -526,7 +518,14 @@ class _ScanningPageState extends State<ScanningPage> with TickerProviderStateMix
         'round_number': _currentRoundNumber,
         'round_time': _currentRoundLabel,
         'status': 'SUCCESS',
-      });
+      
+      };
+      await http.post(
+        Uri.parse('https://kcet-patrol-api.kcet-patrol-hq.workers.dev/api/scan'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(payload)
+      );
+
 
       _activeQrId = null;
       _msg('SCAN UPLOADED', Colors.green);
@@ -572,7 +571,10 @@ class _ScanningPageState extends State<ScanningPage> with TickerProviderStateMix
         return;
       }
 
-      await Supabase.instance.client.from('scanning_details').insert({
+      await http.post(
+        Uri.parse('https://kcet-patrol-api.kcet-patrol-hq.workers.dev/api/scan'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
         'guard_name': widget.guardName,
         'qr_id': p['qr_id'],
         'qr_name': p['qr_name'],
@@ -583,7 +585,8 @@ class _ScanningPageState extends State<ScanningPage> with TickerProviderStateMix
         'round_number': _currentRoundNumber,
         'round_time': _currentRoundLabel,
         'status': 'MISSED',
-      });
+      })
+      );
 
       _fetchCheckpoints();
       _msg("MARKED MISSED", Colors.red);

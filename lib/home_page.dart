@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import 'dart:math' as math;
@@ -206,13 +206,16 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       final roundStart = info['currentRoundTime'] as DateTime;
       final roundEnd   = info['scanWindowClose']  as DateTime;
       final closed     = DateTime.now().isAfter(roundEnd);
-      final totalRes   = await Supabase.instance.client.from('qr').select('qr_id')
-          .eq('campus_code', _selectedCampusCode).eq('status', 'active');
-      final scannedRes = await Supabase.instance.client.from('scanning_details')
-          .select('qr_id, status').eq('campus_code', _selectedCampusCode)
-          .eq('round_number', info['currentRoundNumber'])
-          .gte('scan_time', roundStart.toUtc().toIso8601String())
-          .lte('scan_time', roundStart.add(const Duration(hours: 12)).toUtc().toIso8601String());
+      
+      final qrsUri = Uri.parse('https://kcet-patrol-api.kcet-patrol-hq.workers.dev/api/qrs/$_selectedCampusCode');
+      final qrsResp = await http.get(qrsUri);
+      final totalRes = qrsResp.statusCode == 200 ? jsonDecode(qrsResp.body) : [];
+
+      
+      final scanUri = Uri.parse('https://kcet-patrol-api.kcet-patrol-hq.workers.dev/api/scans/$_selectedCampusCode?round_number=${info['currentRoundNumber']}&scan_time_gte=${roundStart.toUtc().toIso8601String()}&scan_time_lte=${roundStart.add(const Duration(hours: 12)).toUtc().toIso8601String()}');
+      final scanResp = await http.get(scanUri);
+      final scannedRes = scanResp.statusCode == 200 ? jsonDecode(scanResp.body) : [];
+
       final unique = <String>{};
       for (var s in scannedRes) {
         if (_isSuccessStatus(s['status'])) unique.add(s['qr_id'].toString());
@@ -255,12 +258,11 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         if (total == 0) {
           status = 'no_qr';
         } else if (i < curIdx) {
-          scannedData = await Supabase.instance.client.from('scanning_details')
-              .select('qr_id, status, guard_name, scan_time')
-              .eq('campus_code', _selectedCampusCode)
-              .eq('round_number', r.round)
-              .gte('scan_time', r.time.toUtc().toIso8601String())
-              .lte('scan_time', r.time.add(const Duration(hours: 12)).toUtc().toIso8601String());
+          
+          final u = Uri.parse('https://kcet-patrol-api.kcet-patrol-hq.workers.dev/api/scans/$_selectedCampusCode?round_number=${r.round}&scan_time_gte=${r.time.toUtc().toIso8601String()}&scan_time_lte=${r.time.add(const Duration(hours: 12)).toUtc().toIso8601String()}');
+          final r2 = await http.get(u);
+          scannedData = r2.statusCode == 200 ? jsonDecode(r2.body) : [];
+
           final seen = <String>{};
           for (var s in scannedData) {
             if (_isSuccessStatus(s['status'])) seen.add(s['qr_id'].toString());
