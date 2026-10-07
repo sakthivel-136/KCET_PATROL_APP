@@ -166,9 +166,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   Future<void> _fetchCampusName() async {
     try {
       if (_selectedCampusCode == "ADMIN") { if (mounted) setState(() => _campusName = "Administrator"); return; }
-      final d = [{'campus_code': 'KCET01', 'campus_name': 'KCET MAIN CAMPUS'}]
-          .select('campus_name').eq('campus_code', _selectedCampusCode).single();
-      if (mounted) setState(() => _campusName = d['campus_name']);
+      if (mounted) setState(() => _campusName = "KCET MAIN CAMPUS");
     } catch (_) { if (mounted) setState(() => _campusName = "Unknown Campus"); }
   }
 
