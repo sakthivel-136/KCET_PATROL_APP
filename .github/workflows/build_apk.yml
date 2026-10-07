@@ -29,12 +29,13 @@ jobs:
           SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
         run: |
           # Try to push an Over-The-Air patch first
-          if shorebird patch android --force; then
+          # We use --artifact apk in release to generate an apk instead of default aab
+          if shorebird patch android; then
             echo "Successfully pushed OTA patch to users!"
             echo "DID_PATCH=true" >> $GITHUB_ENV
           else
             echo "Patch failed (likely first run or new version). Creating a new base release..."
-            shorebird release android --force
+            shorebird release android --artifact apk
             echo "DID_PATCH=false" >> $GITHUB_ENV
           fi
 
