@@ -185,7 +185,9 @@ class _ScanningPageState extends State<ScanningPage> with TickerProviderStateMix
           .from('scanning_details')
           .select('qr_id,status')
           .eq('campus_code', widget.campusCode)
-          .eq('round_slot', _currentRound.toUtc().toIso8601String());
+          .eq('round_number', _currentRoundNumber)
+          .gte('scan_time', _currentRound.toUtc().toIso8601String())
+          .lte('scan_time', _currentRound.add(const Duration(hours: 12)).toUtc().toIso8601String());
 
       final Set<String> success = {};
 
@@ -245,7 +247,9 @@ class _ScanningPageState extends State<ScanningPage> with TickerProviderStateMix
           .select('id')
           .eq('campus_code', widget.campusCode)
           .eq('qr_id', qr)
-          .eq('round_slot', _currentRound.toUtc().toIso8601String())
+          .eq('round_number', _currentRoundNumber)
+          .gte('scan_time', _currentRound.toUtc().toIso8601String())
+          .lte('scan_time', _currentRound.add(const Duration(hours: 12)).toUtc().toIso8601String())
           .eq('status', 'SUCCESS')
           .maybeSingle();
 
@@ -507,7 +511,9 @@ class _ScanningPageState extends State<ScanningPage> with TickerProviderStateMix
           .from('scanning_details')
           .delete()
           .eq('qr_id', p['qr_id'])
-          .eq('round_slot', _currentRound.toUtc().toIso8601String());
+          .eq('round_number', _currentRoundNumber)
+          .gte('scan_time', _currentRound.toUtc().toIso8601String())
+          .lte('scan_time', _currentRound.add(const Duration(hours: 12)).toUtc().toIso8601String());
 
       await Supabase.instance.client.from('scanning_details').insert({
         'guard_name': widget.guardName,
@@ -517,7 +523,6 @@ class _ScanningPageState extends State<ScanningPage> with TickerProviderStateMix
         'log': pos.longitude,
         'campus_code': widget.campusCode,
         'scan_time': DateTime.now().toUtc().toIso8601String(),
-        'round_slot': _currentRound.toUtc().toIso8601String(),
         'round_number': _currentRoundNumber,
         'round_time': _currentRoundLabel,
         'status': 'SUCCESS',
@@ -575,7 +580,6 @@ class _ScanningPageState extends State<ScanningPage> with TickerProviderStateMix
         'log': pos.longitude,
         'campus_code': widget.campusCode,
         'scan_time': DateTime.now().toUtc().toIso8601String(),
-        'round_slot': _currentRound.toUtc().toIso8601String(),
         'round_number': _currentRoundNumber,
         'round_time': _currentRoundLabel,
         'status': 'MISSED',

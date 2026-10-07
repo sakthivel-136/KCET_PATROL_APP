@@ -210,7 +210,9 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           .eq('campus_code', _selectedCampusCode).eq('status', 'active');
       final scannedRes = await Supabase.instance.client.from('scanning_details')
           .select('qr_id, status').eq('campus_code', _selectedCampusCode)
-          .eq('round_slot', roundStart.toUtc().toIso8601String());
+          .eq('round_number', info['currentRoundNumber'])
+          .gte('scan_time', roundStart.toUtc().toIso8601String())
+          .lte('scan_time', roundStart.add(const Duration(hours: 12)).toUtc().toIso8601String());
       final unique = <String>{};
       for (var s in scannedRes) {
         if (_isSuccessStatus(s['status'])) unique.add(s['qr_id'].toString());
@@ -256,7 +258,9 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           scannedData = await Supabase.instance.client.from('scanning_details')
               .select('qr_id, status, guard_name, scan_time')
               .eq('campus_code', _selectedCampusCode)
-              .eq('round_slot', r.time.toUtc().toIso8601String());
+              .eq('round_number', r.round)
+              .gte('scan_time', r.time.toUtc().toIso8601String())
+              .lte('scan_time', r.time.add(const Duration(hours: 12)).toUtc().toIso8601String());
           final seen = <String>{};
           for (var s in scannedData) {
             if (_isSuccessStatus(s['status'])) seen.add(s['qr_id'].toString());
