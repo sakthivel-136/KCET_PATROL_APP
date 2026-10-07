@@ -256,7 +256,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         List<dynamic> scannedData = [];
         if (total == 0) {
           status = 'no_qr';
-        } else if (i < curIdx) {
+        } else if (i <= curIdx) {
           
           final u = Uri.parse('https://kcet-patrol-api.kcet-patrol-hq.workers.dev/api/scans/$_selectedCampusCode?round_number=${r.round}&scan_time_gte=${r.time.toUtc().toIso8601String()}&scan_time_lte=${r.time.add(const Duration(hours: 12)).toUtc().toIso8601String()}');
           final r2 = await http.get(u);
@@ -267,12 +267,14 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
             if (_isSuccessStatus(s['status'])) seen.add(s['qr_id'].toString());
           }
           scanned = seen.length;
-          status  = seen.length >= total ? 'success' : 'missed';
-          guard   = scannedData.isNotEmpty ? (scannedData.first['guard_name'] ?? '') : '';
-        } else if (i == curIdx) {
-          status = 'current';
-          scanned = _scannedCount;
-          guard   = widget.guardName;
+          
+          if (i == curIdx) {
+             status = 'current';
+             guard = scannedData.isNotEmpty ? (scannedData.first['guard_name'] ?? widget.guardName) : widget.guardName;
+          } else {
+             status  = seen.length >= total ? 'success' : 'missed';
+             guard   = scannedData.isNotEmpty ? (scannedData.first['guard_name'] ?? '') : '';
+          }
         } else {
           status = 'future';
         }
@@ -350,9 +352,12 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     showDialog(context: context, barrierDismissible: false,
       builder: (_) => const _LoadingDialog(message: "Loading shift data..."));
     try {
-      final users  = [];
-      final shifts = [];
-      final allocs = [];
+      final uRes = await http.get(Uri.parse('https://kcet-patrol-api.kcet-patrol-hq.workers.dev/api/users'));
+      final sRes = await http.get(Uri.parse('https://kcet-patrol-api.kcet-patrol-hq.workers.dev/api/shifts'));
+      final aRes = await http.get(Uri.parse('https://kcet-patrol-api.kcet-patrol-hq.workers.dev/api/shift_allocations'));
+      final users = uRes.statusCode == 200 ? jsonDecode(uRes.body) as List : [];
+      final shifts = sRes.statusCode == 200 ? jsonDecode(sRes.body) as List : [];
+      final allocs = aRes.statusCode == 200 ? jsonDecode(aRes.body) as List : [];
       if (!mounted) return;
       Navigator.pop(context);
       final guards    = List<Map<String,dynamic>>.from(users);
@@ -373,9 +378,12 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
   Future<void> _editGuardShifts(String sid, List<String> shiftIds) async {
     try {
-      // Admin edit disabled
       if (shiftIds.isNotEmpty) {
-        // Admin edit disabled
+        await http.post(
+          Uri.parse('https://kcet-patrol-api.kcet-patrol-hq.workers.dev/api/shift_allocations'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'security_id': sid, 'shift_ids': shiftIds})
+        );
       }
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: Text("Shifts updated!"), backgroundColor: _kGreen,
