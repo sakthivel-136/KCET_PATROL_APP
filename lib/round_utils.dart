@@ -19,10 +19,23 @@ class DbPatrolRound {
   DbPatrolRound({required this.roundNumber, required this.startTime, required this.endTime});
 
   factory DbPatrolRound.fromJson(Map<String, dynamic> json) {
+    int rNum = int.tryParse(json['round_number']?.toString() ?? '0') ?? 0;
+    
+    String safeTime(dynamic val) {
+      if (val == null) return "00:00";
+      String s = val.toString().trim();
+      if (s.isEmpty) return "00:00";
+      if (s.contains(':')) {
+        final p = s.split(':');
+        return "${p[0].padLeft(2, '0')}:${p[1].padLeft(2, '0')}";
+      }
+      return s.length >= 5 ? s.substring(0, 5) : s;
+    }
+
     return DbPatrolRound(
-      roundNumber: json['round_number'],
-      startTime: json['start_time'].toString().substring(0, 5),
-      endTime: json['end_time'].toString().substring(0, 5),
+      roundNumber: rNum,
+      startTime: safeTime(json['start_time']),
+      endTime: safeTime(json['end_time']),
     );
   }
 }

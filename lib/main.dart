@@ -328,10 +328,11 @@ class _LoginScreenState extends State<LoginScreen> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('cached_rounds', jsonEncode(roundsData));
       await prefs.setString('cached_qrs', jsonEncode(qrData));
-      await loadCachedRounds();
     } catch (e) {
       debugPrint('Error caching data: $e');
     }
+    
+    await loadCachedRounds();
 
     if (!mounted) return;
     Navigator.pushReplacementNamed(context, '/home', arguments: {
