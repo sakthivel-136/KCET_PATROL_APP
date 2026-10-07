@@ -208,3 +208,7 @@ DateTime getNearestPatrolRoundStart(DateTime now) {
   final info = getCurrentPatrolRound(now);
   return info['currentRoundTime'] as DateTime;
 }
+
+DateTime getScanWindowStart(DateTime roundStart) {
+  return roundStart.add(const Duration(minutes: 45));
+}
