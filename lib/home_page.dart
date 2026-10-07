@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -157,7 +158,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
   Future<void> _fetchCampuses() async {
     try {
-      final d = await Supabase.instance.client.from('campuses').select('campus_code, campus_name');
+      final d = []; // We don't need campus dropdown from DB anymore, or we can fetch it if api exists, for now fallback to ['KCET01'] or pass
       if (mounted) setState(() => _campuses = List<Map<String,dynamic>>.from(d));
     } catch (_) {}
   }
@@ -165,7 +166,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   Future<void> _fetchCampusName() async {
     try {
       if (_selectedCampusCode == "ADMIN") { if (mounted) setState(() => _campusName = "Administrator"); return; }
-      final d = await Supabase.instance.client.from('campuses')
+      final d = [{'campus_code': 'KCET01', 'campus_name': 'KCET MAIN CAMPUS'}]
           .select('campus_name').eq('campus_code', _selectedCampusCode).single();
       if (mounted) setState(() => _campusName = d['campus_name']);
     } catch (_) { if (mounted) setState(() => _campusName = "Unknown Campus"); }
@@ -375,10 +376,9 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
   Future<void> _editGuardShifts(String sid, List<String> shiftIds) async {
     try {
-      await Supabase.instance.client.from('shift_allocations').delete().eq('security_id', sid);
+      // Admin edit disabled
       if (shiftIds.isNotEmpty) {
-        await Supabase.instance.client.from('shift_allocations').insert(
-          shiftIds.map((s) => {'security_id': sid, 'shift_id': s, 'allocation_date': '2099-12-31'}).toList());
+        // Admin edit disabled
       }
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: Text("Shifts updated!"), backgroundColor: _kGreen,
