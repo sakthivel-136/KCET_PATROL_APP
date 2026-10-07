@@ -1,4 +1,4 @@
-name: Build and Push APK
+name: Build and Push Shorebird APK
 
 on:
   push:
@@ -19,29 +19,32 @@ jobs:
         with:
           ref: main
 
-      - name: Set up Java
-        uses: actions/setup-java@v3
+      - name: Setup Shorebird
+        uses: shorebirdtech/setup-shorebird@v1
         with:
-          distribution: 'zulu'
-          java-version: '17'
+          cache: true
 
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: 'stable'
+      - name: Push Shorebird Update (Patch or Release)
+        env:
+          SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
+        run: |
+          # Try to push an Over-The-Air patch first
+          if shorebird patch android --force; then
+            echo "Successfully pushed OTA patch to users!"
+            echo "DID_PATCH=true" >> $GITHUB_ENV
+          else
+            echo "Patch failed (likely first run or new version). Creating a new base release..."
+            shorebird release android --force
+            echo "DID_PATCH=false" >> $GITHUB_ENV
+          fi
 
-      - name: Install Dependencies
-        run: flutter pub get
-
-      - name: Build APK
-        run: flutter build apk --release
-
-      - name: Commit and Push APK
+      - name: Commit and Push New Base APK
+        if: env.DID_PATCH == 'false'
         run: |
           mkdir -p apk
           cp build/app/outputs/flutter-apk/app-release.apk apk/KCET_PATROL_APP.apk
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
           git add apk/KCET_PATROL_APP.apk
-          git commit -m "chore: auto-build and push latest APK" || echo "No changes to commit"
+          git commit -m "chore: auto-build new base APK for Shorebird" || echo "No changes to commit"
           git push origin main
