@@ -35,15 +35,7 @@ Future<void> main() async {
   ));
   try { tz.initializeTimeZones(); } catch (_) {}
   _initializeNotifications();
-  try {
-    await Future.any([
-      Supabase.initialize(
-        url: 'https://jnzvystfghhhvvnmkygj.supabase.co',
-        anonKey: 'sb_publishable_3UHiK7knPpgBjBviPLN0jQ_kMc7p1ci',
-      ),
-      Future.delayed(const Duration(seconds: 10), () => throw TimeoutException('timeout')),
-    ]);
-  } catch (_) {}
+  
   runApp(const KcetSecurityRoundsApp());
 }
 

@@ -248,8 +248,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       final cur   = info['current'] as PatrolRound;
       final rounds = buildPatrolRounds(now);
       final curIdx = rounds.indexWhere((r) => r.round == cur.round);
-      final qrData = await Supabase.instance.client.from('qr').select('qr_id')
-          .eq('campus_code', _selectedCampusCode).eq('status', 'active');
+      final rQr = await http.get(Uri.parse('https://kcet-patrol-api.kcet-patrol-hq.workers.dev/api/qrs/$_selectedCampusCode'));
+      final qrData = rQr.statusCode == 200 ? jsonDecode(rQr.body) : [];
       final total = qrData.length;
       List<Map<String,dynamic>> slots = [];
       for (var i = 0; i < rounds.length; i++) {
@@ -349,13 +349,12 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
   // ── Shift Management ──────────────────────────────────────────────────────
   Future<void> _showShiftManagement() async {
-    final client = Supabase.instance.client;
     showDialog(context: context, barrierDismissible: false,
       builder: (_) => const _LoadingDialog(message: "Loading shift data..."));
     try {
-      final users  = await client.from('security_users').select('security_id, security_name, role').eq('role', 'Guard');
-      final shifts = await client.from('shifts').select('shift_id, shift_name, start_time, end_time');
-      final allocs = await client.from('shift_allocations').select('security_id, shift_id');
+      final users  = [];
+      final shifts = [];
+      final allocs = [];
       if (!mounted) return;
       Navigator.pop(context);
       final guards    = List<Map<String,dynamic>>.from(users);

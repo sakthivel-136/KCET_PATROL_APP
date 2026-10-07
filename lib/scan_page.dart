@@ -174,11 +174,8 @@ class _ScanningPageState extends State<ScanningPage> with TickerProviderStateMix
         qrData = qrData.where((q) => q['status'] == 'active').toList();
       } else {
         // Fallback to DB if cache fails
-        qrData = await Supabase.instance.client
-            .from('qr')
-            .select()
-            .eq('campus_code', widget.campusCode)
-            .eq('status', 'active');
+        final rQr = await http.get(Uri.parse('https://kcet-patrol-api.kcet-patrol-hq.workers.dev/api/qrs/${widget.campusCode}'));
+        qrData = rQr.statusCode == 200 ? jsonDecode(rQr.body) : [];
       }
 
       
