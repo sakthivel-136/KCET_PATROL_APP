@@ -206,9 +206,22 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       final roundEnd   = info['scanWindowClose']  as DateTime;
       final closed     = DateTime.now().isAfter(roundEnd);
       
+    // Cache QRs in memory to avoid redundant network & D1 reads
+    final prefs = await SharedPreferences.getInstance();
+    final cachedQrStr = prefs.getString('cached_qrs_$_selectedCampusCode');
+    List<dynamic> totalRes = [];
+    if (cachedQrStr != null) {
+      try { totalRes = jsonDecode(cachedQrStr); } catch (_) {}
+    }
+    if (totalRes.isEmpty) {
       final qrsUri = Uri.parse('https://kcet-patrol-api.kcet-patrol-hq.workers.dev/api/qrs/$_selectedCampusCode');
       final qrsResp = await http.get(qrsUri);
-      final totalRes = qrsResp.statusCode == 200 ? jsonDecode(qrsResp.body) : [];
+      if (qrsResp.statusCode == 200) {
+        totalRes = jsonDecode(qrsResp.body);
+        prefs.setString('cached_qrs_$_selectedCampusCode', qrsResp.body);
+      }
+    }
+    totalRes = totalRes.where((q) => q['status'] == 'active').toList();
 
       
       final scanUri = Uri.parse('https://kcet-patrol-api.kcet-patrol-hq.workers.dev/api/scans/$_selectedCampusCode?round_number=${info['currentRoundNumber']}&scan_time_gte=${roundStart.toUtc().toIso8601String()}&scan_time_lte=${roundStart.add(const Duration(hours: 12)).toUtc().toIso8601String()}');
@@ -237,7 +250,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     finally { _isRefreshing = false; }
   }
 
-  // ── Report Data ───────────────────────────────────────────────────────────
+    // ── Report Data ───────────────────────────────────────────────────────────
   Future<void> _generateRoundSlots() async {
     setState(() => _isLoadingStatus = true);
     try {
@@ -246,9 +259,36 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       final cur   = info['current'] as PatrolRound;
       final rounds = buildPatrolRounds(now);
       final curIdx = rounds.indexWhere((r) => r.round == cur.round);
-      final rQr = await http.get(Uri.parse('https://kcet-patrol-api.kcet-patrol-hq.workers.dev/api/qrs/$_selectedCampusCode'));
-      final qrData = rQr.statusCode == 200 ? jsonDecode(rQr.body) : [];
+
+      // 1. Fetch or get cached QRs
+      final prefs = await SharedPreferences.getInstance();
+      final cachedQrStr = prefs.getString('cached_qrs_$_selectedCampusCode');
+      List<dynamic> qrData = [];
+      if (cachedQrStr != null) {
+        try { qrData = jsonDecode(cachedQrStr); } catch (_) {}
+      }
+      if (qrData.isEmpty) {
+        final rQr = await http.get(Uri.parse('https://kcet-patrol-api.kcet-patrol-hq.workers.dev/api/qrs/$_selectedCampusCode'));
+        if (rQr.statusCode == 200) {
+          qrData = jsonDecode(rQr.body);
+          prefs.setString('cached_qrs_$_selectedCampusCode', rQr.body);
+        }
+      }
+      qrData = qrData.where((q) => q['status'] == 'active').toList();
       final total = qrData.length;
+
+      // 2. Fetch ALL scans for today in ONE single API call instead of 12 separate calls!
+      List<dynamic> allDayScans = [];
+      if (rounds.isNotEmpty) {
+        final dayStart = rounds.first.time;
+        final dayEnd = rounds.last.time.add(const Duration(hours: 4));
+        final singleBatchUrl = Uri.parse('https://kcet-patrol-api.kcet-patrol-hq.workers.dev/api/scans/$_selectedCampusCode?scan_time_gte=${dayStart.toUtc().toIso8601String()}&scan_time_lte=${dayEnd.toUtc().toIso8601String()}');
+        final batchResp = await http.get(singleBatchUrl);
+        if (batchResp.statusCode == 200) {
+          allDayScans = jsonDecode(batchResp.body) as List;
+        }
+      }
+
       List<Map<String,dynamic>> slots = [];
       for (var i = 0; i < rounds.length; i++) {
         final r = rounds[i];
@@ -257,10 +297,21 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         if (total == 0) {
           status = 'no_qr';
         } else if (i <= curIdx) {
-          
-          final u = Uri.parse('https://kcet-patrol-api.kcet-patrol-hq.workers.dev/api/scans/$_selectedCampusCode?round_number=${r.round}&scan_time_gte=${r.time.toUtc().toIso8601String()}&scan_time_lte=${r.time.add(const Duration(hours: 12)).toUtc().toIso8601String()}');
-          final r2 = await http.get(u);
-          scannedData = r2.statusCode == 200 ? jsonDecode(r2.body) : [];
+          final slotStart = r.time.toUtc();
+          final slotEnd = r.time.add(const Duration(hours: 2)).toUtc();
+
+          // Filter from single batch in memory without any DB reads
+          scannedData = allDayScans.where((s) {
+            final matchRound = s['round_number'] == r.round;
+            if (s['scan_time'] != null) {
+              final st = DateTime.tryParse(s['scan_time'].toString());
+              if (st != null) {
+                final isWithin = !st.toUtc().isBefore(slotStart) && st.toUtc().isBefore(slotEnd);
+                return matchRound || isWithin;
+              }
+            }
+            return matchRound;
+          }).toList();
 
           final seen = <String>{};
           for (var s in scannedData) {

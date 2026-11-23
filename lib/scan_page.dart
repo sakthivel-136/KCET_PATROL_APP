@@ -107,7 +107,8 @@ class _ScanningPageState extends State<ScanningPage> with TickerProviderStateMix
     _initScanner();
     WidgetsBinding.instance.addPostFrameCallback((_) => _requestRequiredPermissions());
     _fetchCheckpoints();
-    _syncTimer = Timer.periodic(const Duration(seconds: 20), (_) => _fetchCheckpoints());
+    // 60s interval instead of 20s to drastically reduce read queries on D1
+    _syncTimer = Timer.periodic(const Duration(seconds: 60), (_) => _fetchCheckpoints());
   }
 
   Future<void> _loadSavedLanguage() async {
@@ -236,13 +237,20 @@ class _ScanningPageState extends State<ScanningPage> with TickerProviderStateMix
   // ================= DB CHECK =================
 
   Future<bool> _existsSuccess(String qr) async {
+    // Check locally in memory first to avoid network hit
+    final match = _checkpoints.cast<Map<String, dynamic>?>().firstWhere(
+      (cp) => cp != null && _norm(cp['qr_id']) == _norm(qr),
+      orElse: () => null,
+    );
+    if (match != null && match['completed'] == true) {
+      return true;
+    }
+
     try {
-      
       final uri = Uri.parse('https://kcet-patrol-api.kcet-patrol-hq.workers.dev/api/scans/${widget.campusCode}?qr_id=$qr&round_number=${_currentRoundNumber}&scan_time_gte=${_currentRound.toUtc().toIso8601String()}&scan_time_lte=${_currentRound.add(const Duration(hours: 12)).toUtc().toIso8601String()}');
       final r = await http.get(uri);
       final list = r.statusCode == 200 ? jsonDecode(r.body) as List : [];
       final res = list.where((e) => e['status'] == 'SUCCESS').isNotEmpty ? list.first : null;
-
 
       if (res != null) {
         debugPrint("ExistsSuccess true: ${res['id']}");
@@ -527,6 +535,13 @@ class _ScanningPageState extends State<ScanningPage> with TickerProviderStateMix
       _activeQrId = null;
       _msg('SCAN UPLOADED', Colors.green);
       _showSuccess(p['qr_name']?.toString() ?? 'Checkpoint Scanned!');
+
+      // Mark locally completed immediately
+      setState(() {
+        p['completed'] = true;
+        p['waiting_done'] = false;
+        p['scanned_once'] = false;
+      });
 
       _fetchCheckpoints();
       _checkAutoLogout();
