@@ -106,9 +106,36 @@ class _ScanningPageState extends State<ScanningPage> with TickerProviderStateMix
 
     _initScanner();
     WidgetsBinding.instance.addPostFrameCallback((_) => _requestRequiredPermissions());
+    _loadInitialCache();
     _fetchCheckpoints();
     // 60s interval instead of 20s to drastically reduce read queries on D1
     _syncTimer = Timer.periodic(const Duration(seconds: 60), (_) => _fetchCheckpoints());
+  }
+
+  Future<void> _loadInitialCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final qrCacheKey = 'cached_qrs_${widget.campusCode}';
+      final qrStr = prefs.getString(qrCacheKey);
+      if (qrStr != null) {
+        final decoded = jsonDecode(qrStr);
+        final activeList = (decoded as List).where((q) => q['status'] == 'active').toList();
+        if (activeList.isNotEmpty && mounted && _checkpoints.isEmpty) {
+          setState(() {
+            _checkpoints = activeList.map((e) => <String, dynamic>{
+              ...e,
+              'completed': false,
+              'scanned_once': false,
+              'waiting_done': false,
+              'timer': 0,
+              'start_time': null,
+              'waiting_time': e['waiting_time'] ?? 15,
+            }).toList();
+            _loading = false;
+          });
+        }
+      }
+    } catch (_) {}
   }
 
   Future<void> _loadSavedLanguage() async {
@@ -513,11 +540,8 @@ class _ScanningPageState extends State<ScanningPage> with TickerProviderStateMix
       // Delete any previous status record (like MISSED) for this checkpoint and round slot to allow overwriting/updating
       
       final payload = {
-        'qr_id': p['qr_id'],
-        'round_number': _currentRoundNumber,
         'scan_time_start': _currentRound.toUtc().toIso8601String(),
         'scan_time_end': _currentRound.add(const Duration(hours: 12)).toUtc().toIso8601String(),
-
         'guard_name': widget.guardName,
         'qr_id': p['qr_id'],
         'qr_name': p['qr_name'],
@@ -528,7 +552,6 @@ class _ScanningPageState extends State<ScanningPage> with TickerProviderStateMix
         'round_number': _currentRoundNumber,
         'round_time': _currentRoundLabel,
         'status': 'SUCCESS',
-      
       };
       await http.post(
         Uri.parse('https://kcet-patrol-api.kcet-patrol-hq.workers.dev/api/scan'),
