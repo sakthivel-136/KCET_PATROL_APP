@@ -168,15 +168,20 @@ class _ScanningPageState extends State<ScanningPage> with TickerProviderStateMix
       _currentWindowEnd = roundInfo['scanWindowClose'] as DateTime;
       _scanAvailable = roundInfo['isActive'] as bool;
       final prefs = await SharedPreferences.getInstance();
-      final qrStr = prefs.getString('cached_qrs');
+      final qrCacheKey = 'cached_qrs_${widget.campusCode}';
+      final qrStr = prefs.getString(qrCacheKey);
       List<dynamic> qrData = [];
       if (qrStr != null) {
         qrData = jsonDecode(qrStr);
         qrData = qrData.where((q) => q['status'] == 'active').toList();
       } else {
-        // Fallback to DB if cache fails
+        // Fallback to DB if cache fails, then store in cache
         final rQr = await http.get(Uri.parse('https://kcet-patrol-api.kcet-patrol-hq.workers.dev/api/qrs/${widget.campusCode}'));
-        qrData = rQr.statusCode == 200 ? jsonDecode(rQr.body) : [];
+        if (rQr.statusCode == 200) {
+          qrData = jsonDecode(rQr.body);
+          prefs.setString(qrCacheKey, rQr.body);
+          qrData = qrData.where((q) => q['status'] == 'active').toList();
+        }
       }
 
       
