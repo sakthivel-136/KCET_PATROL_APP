@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shorebird_code_push/shorebird_code_push.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'round_utils.dart';
@@ -77,6 +78,12 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     'No shift assigned': {'EN': 'No shift assigned', 'TA': 'ஷிப்ட் ஒதுக்கப்படவில்லை'},
     'Shift assigned': {'EN': 'Shift assigned', 'TA': 'ஷிப்ட் ஒதுக்கப்பட்டது'},
     'Search security guard...': {'EN': 'Search security guard...', 'TA': 'காவலரை தேடவும்...'},
+    'Check for Updates': {'EN': 'Check for Updates', 'TA': 'புதுப்பிப்புகளைச் சரிபார்'},
+    'Checking for updates...': {'EN': 'Checking for updates...', 'TA': 'புதுப்பிப்புகள் சரிபார்க்கப்படுகிறது...'},
+    'Downloading update...': {'EN': 'Downloading update...', 'TA': 'புதுப்பிப்பு பதிவிறக்கப்படுகிறது...'},
+    'Update installed! Restart app': {'EN': 'Update installed! Please restart the app.', 'TA': 'புதுப்பிப்பு நிறுவப்பட்டது! செயலியை மீண்டும் தொடங்கவும்.'},
+    'You are on the latest version!': {'EN': 'You are on the latest version!', 'TA': 'நீங்கள் சமீபத்திய பதிப்பில் உள்ளீர்கள்!'},
+    'Update check failed': {'EN': 'Update check failed', 'TA': 'புதுப்பிப்பு சோதனையில் தோல்வி'},
   };
 
   String _t(String key) {
@@ -453,6 +460,141 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     }
   }
 
+  Future<void> _checkForAppUpdate() async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _LoadingDialog(message: _t("Checking for updates...")),
+    );
+
+    try {
+      final updater = ShorebirdUpdater();
+      final status = await updater.checkForUpdate();
+
+      if (!mounted) return;
+      Navigator.pop(context); // Close loading dialog
+
+      if (status == UpdateStatus.outdated) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (dialogCtx) => AlertDialog(
+            backgroundColor: const Color(0xFF111836),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: Row(children: [
+              const Icon(Icons.system_update_rounded, color: _kCyan, size: 24),
+              const SizedBox(width: 10),
+              Text(_t("Check for Updates"), style: const TextStyle(color: Colors.white, fontSize: 16)),
+            ]),
+            content: Text(
+              _selectedLang == 'TA'
+                  ? 'புதிய புதுப்பிப்பு கிடைக்கிறது! இப்போது பதிவிறக்க விரும்புகிறீர்களா?'
+                  : 'A new update is available! Would you like to download and install it now?',
+              style: const TextStyle(color: Colors.white70, fontSize: 13),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogCtx),
+                child: Text(
+                  _selectedLang == 'TA' ? 'ரத்து' : 'Cancel',
+                  style: const TextStyle(color: Colors.white38),
+                ),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _kAccent,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                onPressed: () async {
+                  Navigator.pop(dialogCtx);
+                  _performDownloadUpdate();
+                },
+                child: Text(
+                  _selectedLang == 'TA' ? 'புதுப்பி' : 'Update Now',
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(_t("You are on the latest version!")),
+          backgroundColor: _kGreen,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+        ));
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text("${_t('Update check failed')}: $e"),
+          backgroundColor: _kRed,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    }
+  }
+
+  Future<void> _performDownloadUpdate() async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _LoadingDialog(message: _t("Downloading update...")),
+    );
+
+    try {
+      final updater = ShorebirdUpdater();
+      await updater.update();
+      if (!mounted) return;
+      Navigator.pop(context);
+
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: const Color(0xFF111836),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Row(children: [
+            const Icon(Icons.check_circle_rounded, color: _kGreen, size: 24),
+            const SizedBox(width: 10),
+            Text(_selectedLang == 'TA' ? 'வெற்றி' : 'Success', style: const TextStyle(color: Colors.white, fontSize: 16)),
+          ]),
+          content: Text(
+            _t("Update installed! Restart app"),
+            style: const TextStyle(color: Colors.white70, fontSize: 13),
+          ),
+          actions: [
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _kGreen,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: () {
+                Navigator.pop(ctx);
+                SystemNavigator.pop();
+              },
+              child: Text(
+                _selectedLang == 'TA' ? 'செயலியை மூடு' : 'Restart App',
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text("${_t('Update check failed')}: $e"),
+          backgroundColor: _kRed,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    }
+  }
+
   // ── Build ─────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
@@ -550,6 +692,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                   HapticFeedback.lightImpact();
                   _refreshPatrolStatus();
                 });
+              } else if (value == 'update') {
+                _checkForAppUpdate();
               } else if (value == 'logout') {
                 Navigator.pushReplacementNamed(context, '/');
               }
@@ -577,6 +721,14 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                   const Icon(Icons.refresh_rounded, color: Colors.white70, size: 20),
                   const SizedBox(width: 12),
                   Text(_selectedLang == 'TA' ? 'புதுப்பி' : 'Refresh', style: const TextStyle(color: Colors.white, fontSize: 14)),
+                ]),
+              ),
+              PopupMenuItem(
+                value: 'update',
+                child: Row(children: [
+                  const Icon(Icons.system_update_rounded, color: _kOrange, size: 20),
+                  const SizedBox(width: 12),
+                  Text(_t("Check for Updates"), style: const TextStyle(color: Colors.white, fontSize: 14)),
                 ]),
               ),
               const PopupMenuDivider(height: 1),
