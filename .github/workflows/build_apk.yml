@@ -35,14 +35,13 @@ jobs:
           SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
         run: |
           # Try to push an Over-The-Air patch first
-          # We use --artifact apk in release to generate an apk instead of default aab
-          # --android-skip-build-dependency-validation bypasses version mismatch checks
-          if shorebird patch android -- --android-skip-build-dependency-validation; then
+          # Pin flutter-version to 3.29.0 so Gradle 8.14 is accepted seamlessly without Flutter 3.50+ requiring Gradle 9.3+
+          if shorebird patch android --flutter-version=3.29.0; then
             echo "Successfully pushed OTA patch to users!"
             echo "DID_PATCH=true" >> $GITHUB_ENV
           else
             echo "Patch failed (likely first run or new version). Creating a new base release..."
-            shorebird release android --artifact apk -- --android-skip-build-dependency-validation
+            shorebird release android --artifact apk --flutter-version=3.29.0
             echo "DID_PATCH=false" >> $GITHUB_ENV
           fi
 
