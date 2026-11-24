@@ -52,8 +52,10 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   // ── Translations ─────────────────────────────────────────────────────────────
   static const Map<String, Map<String, String>> _i10n = {
     'Security Rounds': {'EN': 'Security Rounds', 'TA': 'பாதுகாப்பு சுற்றுகள்'},
+    'KCET Patrol': {'EN': 'KCET Patrol', 'TA': 'KCET ரோந்து'},
     'Select Campus': {'EN': 'Select Campus', 'TA': 'கேம்பஸ் தேர்வு செய்'},
     'Shifts': {'EN': 'Shifts', 'TA': 'ஷிப்டுகள்'},
+    'Shift Management': {'EN': 'Shift Management', 'TA': 'ஷிப்ட் நிர்வாகம்'},
     'Total QR': {'EN': 'Total QR', 'TA': 'மொத்த QR'},
     'Scanned': {'EN': 'Scanned', 'TA': 'ஸ்கேன் செய்யப்பட்டது'},
     'Left': {'EN': 'Left', 'TA': 'மீதமுள்ளது'},
@@ -68,6 +70,13 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     'Overdue': {'EN': 'Overdue', 'TA': 'காலாவதியானது'},
     'No QR codes to scan.': {'EN': 'No QR codes to scan.', 'TA': 'ஸ்கேன் செய்ய QR குறியீடு இல்லை.'},
     'SCAN WINDOW': {'EN': 'SCAN WINDOW', 'TA': 'ஸ்கேன் நேரம்'},
+    'Report': {'EN': 'Report', 'TA': 'அறிக்கை'},
+    'Patrol Report': {'EN': 'Patrol Report', 'TA': 'ரோந்து அறிக்கை'},
+    'Shift updated!': {'EN': 'Shift updated!', 'TA': 'ஷிப்ட் புதுப்பிக்கப்பட்டது!'},
+    'Failed to update shift': {'EN': 'Failed to update shift', 'TA': 'ஷிப்ட் புதுப்பிப்பதில் தோல்வி'},
+    'No shift assigned': {'EN': 'No shift assigned', 'TA': 'ஷிப்ட் ஒதுக்கப்படவில்லை'},
+    'Shift assigned': {'EN': 'Shift assigned', 'TA': 'ஷிப்ட் ஒதுக்கப்பட்டது'},
+    'Search security guard...': {'EN': 'Search security guard...', 'TA': 'காவலரை தேடவும்...'},
   };
 
   String _t(String key) {
@@ -78,11 +87,9 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   late AnimationController _pulseCtrl;
   late AnimationController _fadeCtrl;
   late AnimationController _progressCtrl;
-  late AnimationController _ringCtrl;
   late Animation<double>   _pulseAnim;
   late Animation<double>   _fadeAnim;
   late Animation<double>   _progressAnim;
-  late Animation<double>   _ringAnim;
   double _targetProgress = 0;
 
   @override
@@ -103,9 +110,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
     _progressCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200));
     _progressAnim = const AlwaysStoppedAnimation(0);
-
-    _ringCtrl = AnimationController(vsync: this, duration: const Duration(seconds: 20))..repeat();
-    _ringAnim = Tween<double>(begin: 0, end: 2 * math.pi).animate(_ringCtrl);
 
     _fetchInitialData();
   }
@@ -131,7 +135,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   @override
   void dispose() {
     _pulseCtrl.dispose(); _fadeCtrl.dispose();
-    _progressCtrl.dispose(); _ringCtrl.dispose();
+    _progressCtrl.dispose();
     _refreshDebouncer?.cancel();
     super.dispose();
   }
@@ -422,6 +426,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         builder: (_) => _ShiftSheet(
           guards: guards, shifts: shiftList, allocs: allocList,
           onSave: _editGuardShifts,
+          selectedLang: _selectedLang,
         ),
       );
     } catch (_) {
@@ -431,21 +436,19 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
   Future<void> _editGuardShifts(String sid, List<String> shiftIds) async {
     try {
-      if (shiftIds.isNotEmpty) {
-        await http.post(
-          Uri.parse('https://kcet-patrol-api.kcet-patrol-hq.workers.dev/api/shift_allocations'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'security_id': sid, 'shift_ids': shiftIds})
-        );
-      }
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text("Shifts updated!"), backgroundColor: _kGreen,
+      await http.post(
+        Uri.parse('https://kcet-patrol-api.kcet-patrol-hq.workers.dev/api/shift_allocations'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'security_id': sid, 'shift_ids': shiftIds})
+      );
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(_t("Shift updated!")), backgroundColor: _kGreen,
         behavior: SnackBarBehavior.floating,
-        duration: Duration(seconds: 1),
+        duration: const Duration(seconds: 1),
       ));
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text("Failed: $e"), backgroundColor: _kRed,
+        content: Text("${_t('Failed to update shift')}: $e"), backgroundColor: _kRed,
         behavior: SnackBarBehavior.floating));
     }
   }
@@ -481,18 +484,26 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         backgroundColor: Colors.transparent, elevation: 0,
         systemOverlayStyle: SystemUiOverlayStyle.light,
         automaticallyImplyLeading: false,
+        titleSpacing: 12,
         title: Row(children: [
-          AnimatedBuilder(
-            animation: _ringAnim,
-            builder: (_, __) => Transform.rotate(
-              angle: _ringAnim.value,
-              child: const Icon(Icons.radar_rounded, color: _kCyan, size: 20),
+          Container(
+            width: 34, height: 34,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(color: _kAccent.withOpacity(0.4), blurRadius: 8),
+              ],
+            ),
+            padding: const EdgeInsets.all(2),
+            child: ClipOval(
+              child: Image.asset('assets/logo.png', fit: BoxFit.contain),
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 10),
           Expanded(
             child: Text(
-              _t("Security Rounds"),
+              _t("KCET Patrol"),
               style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -503,8 +514,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           GestureDetector(
             onTap: _toggleLanguage,
             child: Container(
-              margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
                 color: _kAccent.withOpacity(0.2),
                 borderRadius: BorderRadius.circular(14),
@@ -516,20 +527,70 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                   const Icon(Icons.translate_rounded, color: _kCyan, size: 14),
                   const SizedBox(width: 4),
                   Text(_selectedLang == 'EN' ? 'தமிழ்' : 'English',
-                    style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                    style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
                 ],
               ),
             ),
           ),
-          if (widget.isMaster) _topBtn(Icons.assessment_rounded, _showReport),
-          _topBtn(Icons.refresh_rounded, () {
-            _refreshDebouncer?.cancel();
-            _refreshDebouncer = Timer(const Duration(milliseconds: 400), () {
-              HapticFeedback.lightImpact();
-              _refreshPatrolStatus();
-            });
-          }),
-          _topBtn(Icons.logout_rounded, () => Navigator.pushReplacementNamed(context, '/')),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.menu_rounded, color: Colors.white, size: 24),
+            color: const Color(0xFF111836),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: BorderSide(color: Colors.white.withOpacity(0.1)),
+            ),
+            onSelected: (value) {
+              if (value == 'shifts') {
+                _showShiftManagement();
+              } else if (value == 'report') {
+                _showReport();
+              } else if (value == 'refresh') {
+                _refreshDebouncer?.cancel();
+                _refreshDebouncer = Timer(const Duration(milliseconds: 400), () {
+                  HapticFeedback.lightImpact();
+                  _refreshPatrolStatus();
+                });
+              } else if (value == 'logout') {
+                Navigator.pushReplacementNamed(context, '/');
+              }
+            },
+            itemBuilder: (ctx) => [
+              PopupMenuItem(
+                value: 'shifts',
+                child: Row(children: [
+                  const Icon(Icons.group_rounded, color: _kCyan, size: 20),
+                  const SizedBox(width: 12),
+                  Text(_t("Shifts"), style: const TextStyle(color: Colors.white, fontSize: 14)),
+                ]),
+              ),
+              PopupMenuItem(
+                value: 'report',
+                child: Row(children: [
+                  const Icon(Icons.assessment_rounded, color: _kGreen, size: 20),
+                  const SizedBox(width: 12),
+                  Text(_t("Report"), style: const TextStyle(color: Colors.white, fontSize: 14)),
+                ]),
+              ),
+              PopupMenuItem(
+                value: 'refresh',
+                child: Row(children: [
+                  const Icon(Icons.refresh_rounded, color: Colors.white70, size: 20),
+                  const SizedBox(width: 12),
+                  Text(_selectedLang == 'TA' ? 'புதுப்பி' : 'Refresh', style: const TextStyle(color: Colors.white, fontSize: 14)),
+                ]),
+              ),
+              const PopupMenuDivider(height: 1),
+              PopupMenuItem(
+                value: 'logout',
+                child: Row(children: [
+                  const Icon(Icons.logout_rounded, color: _kRed, size: 20),
+                  const SizedBox(width: 12),
+                  Text(_selectedLang == 'TA' ? 'வெளியேறு' : 'Logout', style: const TextStyle(color: _kRed, fontSize: 14)),
+                ]),
+              ),
+            ],
+          ),
+          const SizedBox(width: 4),
         ],
       ),
       body: FadeTransition(
@@ -582,25 +643,23 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                       _statusChip(windowText,
                         _isWithinScanWindow() ? _kGreen : _kOrange,
                         _isWithinScanWindow() ? Icons.lock_open_rounded : Icons.lock_clock_rounded),
-                    if (widget.isMaster) ...[
-                      const SizedBox(height: 6),
-                      GestureDetector(
-                        onTap: _showShiftManagement,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.06),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: Colors.white12),
-                          ),
-                          child: Row(mainAxisSize: MainAxisSize.min, children: [
-                            const Icon(Icons.group_rounded, size: 12, color: Colors.white54),
-                            const SizedBox(width: 4),
-                            Text(_t("Shifts"), style: const TextStyle(fontSize: 11, color: Colors.white54)),
-                          ]),
+                    const SizedBox(height: 6),
+                    GestureDetector(
+                      onTap: _showShiftManagement,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: _kAccent.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: _kAccent.withOpacity(0.3)),
                         ),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          const Icon(Icons.group_rounded, size: 12, color: _kCyan),
+                          const SizedBox(width: 4),
+                          Text(_t("Shifts"), style: const TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.bold)),
+                        ]),
                       ),
-                    ],
+                    ),
                   ]),
                 ])),
 
@@ -964,78 +1023,214 @@ class _LoadingDialog extends StatelessWidget {
 class _ShiftSheet extends StatefulWidget {
   final List<Map<String,dynamic>> guards, shifts, allocs;
   final Future<void> Function(String, List<String>) onSave;
-  const _ShiftSheet({required this.guards, required this.shifts, required this.allocs, required this.onSave});
+  final String selectedLang;
+  const _ShiftSheet({
+    required this.guards,
+    required this.shifts,
+    required this.allocs,
+    required this.onSave,
+    required this.selectedLang,
+  });
   @override
   State<_ShiftSheet> createState() => _ShiftSheetState();
 }
 
 class _ShiftSheetState extends State<_ShiftSheet> {
   late List<Map<String,dynamic>> _allocs;
+  String _searchQuery = "";
+
   @override
-  void initState() { super.initState(); _allocs = List.from(widget.allocs); }
+  void initState() {
+    super.initState();
+    _allocs = List.from(widget.allocs);
+  }
+
+  String _t(String key) {
+    return _HomePageState._i10n[key]?[widget.selectedLang] ?? key;
+  }
+
   @override
-  Widget build(BuildContext context) => _GlassSheet(
-    title: "Guard Shifts", icon: Icons.manage_accounts_rounded,
-    child: Column(
-      children: widget.guards.map((g) {
-        final gid = g['security_id'];
-        final assigned = _allocs.where((a) => a['security_id'] == gid)
-            .map((a) => a['shift_id'].toString()).toSet();
-        return Container(
-          margin: const EdgeInsets.symmetric(vertical: 6),
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.04),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white.withOpacity(0.08)),
-          ),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              CircleAvatar(radius: 20, backgroundColor: _kAccent.withOpacity(0.15),
-                child: const Icon(Icons.person_rounded, color: _kAccent, size: 20)),
-              const SizedBox(width: 10),
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(g['security_name'] ?? 'Guard', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                Text("ID: $gid", style: const TextStyle(color: Colors.white38, fontSize: 11)),
-              ])),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: (assigned.isEmpty ? _kRed : _kGreen).withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(assigned.isEmpty ? "No shift" : "${assigned.length} shift(s)",
-                  style: TextStyle(color: assigned.isEmpty ? _kRed : _kGreen,
-                    fontWeight: FontWeight.bold, fontSize: 11)),
-              ),
-            ]),
-            const SizedBox(height: 10),
-            Wrap(spacing: 6, runSpacing: 4,
-              children: widget.shifts.map((s) {
-                final sid = s['shift_id'].toString();
-                final on  = assigned.contains(sid);
-                return FilterChip(
-                  label: Text("${s['shift_name']} (${s['start_time']}–${s['end_time']})",
-                    style: const TextStyle(fontSize: 11)),
-                  selected: on,
-                  selectedColor: _kAccent.withOpacity(0.2),
-                  checkmarkColor: _kAccent,
-                  onSelected: (val) async {
-                    final upd = Set<String>.from(assigned);
-                    val ? upd.add(sid) : upd.remove(sid);
-                    await widget.onSave(gid, upd.toList());
-                    _allocs.removeWhere((a) => a['security_id'] == gid);
-                    for (var id in upd) _allocs.add({'security_id': gid, 'shift_id': id});
-                    setState(() {});
-                  },
-                );
-              }).toList(),
+  Widget build(BuildContext context) {
+    final filteredGuards = widget.guards.where((g) {
+      final name = (g['security_name'] ?? '').toString().toLowerCase();
+      final id = (g['security_id'] ?? '').toString().toLowerCase();
+      final q = _searchQuery.toLowerCase().trim();
+      return q.isEmpty || name.contains(q) || id.contains(q);
+    }).toList();
+
+    return _GlassSheet(
+      title: _t("Shift Management"),
+      icon: Icons.manage_accounts_rounded,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Search box
+          Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.06),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.white12),
             ),
-          ]),
-        );
-      }).toList(),
-    ),
-  );
+            child: TextField(
+              style: const TextStyle(color: Colors.white, fontSize: 13),
+              decoration: InputDecoration(
+                hintText: _t("Search security guard..."),
+                hintStyle: const TextStyle(color: Colors.white38, fontSize: 13),
+                prefixIcon: const Icon(Icons.search_rounded, color: _kCyan, size: 20),
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              ),
+              onChanged: (val) => setState(() => _searchQuery = val),
+            ),
+          ),
+
+          if (filteredGuards.isEmpty)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  widget.selectedLang == 'TA' ? 'காவலர்கள் எவரும் இல்லை' : 'No guards found',
+                  style: const TextStyle(color: Colors.white38, fontSize: 13),
+                ),
+              ),
+            )
+          else
+            ...filteredGuards.map((g) {
+              final gid = g['security_id']?.toString() ?? '';
+              final assigned = _allocs.where((a) => a['security_id']?.toString() == gid)
+                  .map((a) => a['shift_id'].toString()).toSet();
+
+              return Container(
+                margin: const EdgeInsets.symmetric(vertical: 6),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.04),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: assigned.isNotEmpty ? _kAccent.withOpacity(0.3) : Colors.white.withOpacity(0.08),
+                  ),
+                ),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    CircleAvatar(
+                      radius: 20,
+                      backgroundColor: assigned.isNotEmpty ? _kGreen.withOpacity(0.15) : _kAccent.withOpacity(0.15),
+                      child: Icon(
+                        Icons.person_rounded,
+                        color: assigned.isNotEmpty ? _kGreen : _kAccent,
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(
+                        g['security_name'] ?? 'Guard',
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                      ),
+                      Text("ID: $gid", style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                    ])),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: (assigned.isEmpty ? _kRed : _kGreen).withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        assigned.isEmpty ? _t("No shift assigned") : "${assigned.length} ${_t('Shift assigned')}",
+                        style: TextStyle(
+                          color: assigned.isEmpty ? _kRed : _kGreen,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                  ]),
+                  const SizedBox(height: 10),
+                  const Divider(color: Colors.white10, height: 1),
+                  const SizedBox(height: 8),
+
+                  // Shifts list with Checkboxes for clear, simple CRUD
+                  ...widget.shifts.map((s) {
+                    final sid = s['shift_id'].toString();
+                    final isChecked = assigned.contains(sid);
+
+                    return InkWell(
+                      borderRadius: BorderRadius.circular(10),
+                      onTap: () async {
+                        final upd = Set<String>.from(assigned);
+                        if (isChecked) {
+                          upd.remove(sid);
+                        } else {
+                          upd.add(sid);
+                        }
+                        await widget.onSave(gid, upd.toList());
+                        setState(() {
+                          _allocs.removeWhere((a) => a['security_id']?.toString() == gid);
+                          for (var id in upd) {
+                            _allocs.add({'security_id': gid, 'shift_id': id});
+                          }
+                        });
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                        margin: const EdgeInsets.symmetric(vertical: 2),
+                        decoration: BoxDecoration(
+                          color: isChecked ? _kAccent.withOpacity(0.12) : Colors.transparent,
+                          borderRadius: BorderRadius.circular(10),
+                          border: isChecked ? Border.all(color: _kAccent.withOpacity(0.3)) : null,
+                        ),
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: Checkbox(
+                                value: isChecked,
+                                activeColor: _kAccent,
+                                checkColor: Colors.white,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                                side: const BorderSide(color: Colors.white38, width: 1.5),
+                                onChanged: (val) async {
+                                  final upd = Set<String>.from(assigned);
+                                  if (val == true) {
+                                    upd.add(sid);
+                                  } else {
+                                    upd.remove(sid);
+                                  }
+                                  await widget.onSave(gid, upd.toList());
+                                  setState(() {
+                                    _allocs.removeWhere((a) => a['security_id']?.toString() == gid);
+                                    for (var id in upd) {
+                                      _allocs.add({'security_id': gid, 'shift_id': id});
+                                    }
+                                  });
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                "${s['shift_name']} (${s['start_time']} – ${s['end_time']})",
+                                style: TextStyle(
+                                  color: isChecked ? Colors.white : Colors.white70,
+                                  fontWeight: isChecked ? FontWeight.w600 : FontWeight.normal,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ]),
+              );
+            }).toList(),
+        ],
+      ),
+    );
+  }
 }
 
 // ─── Extraordinary Report Sheet ───────────────────────────────────────────────
