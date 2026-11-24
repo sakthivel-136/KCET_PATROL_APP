@@ -675,7 +675,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
             ),
           ),
           PopupMenuButton<String>(
-            icon: const Icon(Icons.menu_rounded, color: Colors.white, size: 24),
+            icon: const Icon(Icons.menu, color: Colors.white, size: 24),
             color: const Color(0xFF111836),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
@@ -699,22 +699,24 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
               }
             },
             itemBuilder: (ctx) => [
-              PopupMenuItem(
-                value: 'shifts',
-                child: Row(children: [
-                  const Icon(Icons.group_rounded, color: _kCyan, size: 20),
-                  const SizedBox(width: 12),
-                  Text(_t("Shifts"), style: const TextStyle(color: Colors.white, fontSize: 14)),
-                ]),
-              ),
-              PopupMenuItem(
-                value: 'report',
-                child: Row(children: [
-                  const Icon(Icons.assessment_rounded, color: _kGreen, size: 20),
-                  const SizedBox(width: 12),
-                  Text(_t("Report"), style: const TextStyle(color: Colors.white, fontSize: 14)),
-                ]),
-              ),
+              if (widget.isMaster) ...[
+                PopupMenuItem(
+                  value: 'shifts',
+                  child: Row(children: [
+                    const Icon(Icons.group_rounded, color: _kCyan, size: 20),
+                    const SizedBox(width: 12),
+                    Text(_t("Shifts"), style: const TextStyle(color: Colors.white, fontSize: 14)),
+                  ]),
+                ),
+                PopupMenuItem(
+                  value: 'report',
+                  child: Row(children: [
+                    const Icon(Icons.assessment_rounded, color: _kGreen, size: 20),
+                    const SizedBox(width: 12),
+                    Text(_t("Report"), style: const TextStyle(color: Colors.white, fontSize: 14)),
+                  ]),
+                ),
+              ],
               PopupMenuItem(
                 value: 'refresh',
                 child: Row(children: [
@@ -1204,6 +1206,10 @@ class _ShiftSheetState extends State<_ShiftSheet> {
   @override
   Widget build(BuildContext context) {
     final filteredGuards = widget.guards.where((g) {
+      // Filter out ADMIN, SYSTEM_SETTING users — only Guards and Supervisors (S.O) are assignable to shifts
+      final role = (g['role'] ?? '').toString().toUpperCase();
+      if (role == 'ADMIN' || role == 'SYSTEM_SETTING') return false;
+
       final name = (g['security_name'] ?? '').toString().toLowerCase();
       final id = (g['security_id'] ?? '').toString().toLowerCase();
       final q = _searchQuery.toLowerCase().trim();
