@@ -10,7 +10,7 @@ android {
     
     // Using modern Flutter defaults (API 34 or 35+)
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    ndkVersion = "27.0.12077973"
 
     compileOptions {
         // Required for using Java 8+ features on older devices
