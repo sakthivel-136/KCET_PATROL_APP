@@ -302,15 +302,15 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
           // Filter from single batch in memory without any DB reads
           scannedData = allDayScans.where((s) {
-            final matchRound = s['round_number'] == r.round;
+            final matchRound = s['round_number']?.toString() == r.round.toString();
+            if (matchRound) return true;
             if (s['scan_time'] != null) {
               final st = DateTime.tryParse(s['scan_time'].toString());
               if (st != null) {
-                final isWithin = !st.toUtc().isBefore(slotStart) && st.toUtc().isBefore(slotEnd);
-                return matchRound || isWithin;
+                return !st.toUtc().isBefore(slotStart) && st.toUtc().isBefore(slotEnd);
               }
             }
-            return matchRound;
+            return false;
           }).toList();
 
           final seen = <String>{};
