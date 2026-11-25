@@ -2,6 +2,7 @@ allprojects {
     repositories {
         google()
         mavenCentral()
+        maven { url = java.net.URI("https://repo1.maven.org/maven2/") }
     }
 }
 
