@@ -76,6 +76,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     'Shift updated!': {'EN': 'Shift updated!', 'TA': 'ஷிப்ட் புதுப்பிக்கப்பட்டது!'},
     'Failed to update shift': {'EN': 'Failed to update shift', 'TA': 'ஷிப்ட் புதுப்பிப்பதில் தோல்வி'},
     'No shift assigned': {'EN': 'No shift assigned', 'TA': 'ஷிப்ட் ஒதுக்கப்படவில்லை'},
+    'Absent (No Shift)': {'EN': 'Absent (No Shift)', 'TA': 'விடுப்பு (ஷிப்ட் இல்லை)'},
+    'On Duty': {'EN': 'On Duty', 'TA': 'பணியில் உள்ளார்'},
     'Shift assigned': {'EN': 'Shift assigned', 'TA': 'ஷிப்ட் ஒதுக்கப்பட்டது'},
     'Search security guard...': {'EN': 'Search security guard...', 'TA': 'காவலரை தேடவும்...'},
     'Check for Updates': {'EN': 'Check for Updates', 'TA': 'புதுப்பிப்புகளைச் சரிபார்'},
@@ -288,7 +290,32 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       qrData = qrData.where((q) => q['status'] == 'active').toList();
       final total = qrData.length;
 
-      // 2. Fetch ALL scans for today in ONE single API call instead of 12 separate calls!
+      // 2. Fetch users, shifts, shift_allocations for accountability mapping
+      List<dynamic> usersList = [];
+      List<dynamic> shiftsList = [];
+      List<dynamic> allocsList = [];
+      try {
+        final uRes = await http.get(Uri.parse('https://kcet-patrol-api.kcet-patrol-hq.workers.dev/api/users'));
+        final sRes = await http.get(Uri.parse('https://kcet-patrol-api.kcet-patrol-hq.workers.dev/api/shifts'));
+        final aRes = await http.get(Uri.parse('https://kcet-patrol-api.kcet-patrol-hq.workers.dev/api/shift_allocations'));
+        if (uRes.statusCode == 200) usersList = jsonDecode(uRes.body);
+        if (sRes.statusCode == 200) shiftsList = jsonDecode(sRes.body);
+        if (aRes.statusCode == 200) allocsList = jsonDecode(aRes.body);
+      } catch (_) {}
+
+      // Map: shift_id -> shift details
+      final shiftMap = <String, Map<String, dynamic>>{};
+      for (var s in shiftsList) {
+        shiftMap[s['shift_id'].toString()] = Map<String, dynamic>.from(s as Map);
+      }
+
+      // Map: security_id -> guard details
+      final userMap = <String, Map<String, dynamic>>{};
+      for (var u in usersList) {
+        userMap[u['security_id'].toString()] = Map<String, dynamic>.from(u as Map);
+      }
+
+      // 3. Fetch ALL scans for today in ONE single API call instead of 12 separate calls!
       List<dynamic> allDayScans = [];
       if (rounds.isNotEmpty) {
         final dayStart = rounds.first.time;
@@ -305,6 +332,53 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         final r = rounds[i];
         String status; int scanned = 0; String guard = '';
         List<dynamic> scannedData = [];
+        List<String> completedGuards = [];
+        String firstScanTime = '';
+        String lastScanTime = '';
+        List<String> onDutyGuards = [];
+        List<String> scannedQrNames = [];
+        List<String> missedQrNames = [];
+
+        // Determine on-duty guards for this round's time
+        final rHour = r.time.hour;
+        final rMin = r.time.minute;
+        final rMinutes = rHour * 60 + rMin;
+
+        final onDutyShiftIds = <String>{};
+        for (var sEntry in shiftMap.entries) {
+          final s = sEntry.value;
+          final startParts = (s['start_time'] ?? '00:00:00').toString().split(':');
+          final endParts = (s['end_time'] ?? '00:00:00').toString().split(':');
+          final sStart = (int.tryParse(startParts[0]) ?? 0) * 60 + (int.tryParse(startParts[1]) ?? 0);
+          final sEnd = (int.tryParse(endParts[0]) ?? 0) * 60 + (int.tryParse(endParts[1]) ?? 0);
+
+          bool inShift = false;
+          if (sEnd > sStart) {
+            inShift = rMinutes >= sStart && rMinutes < sEnd;
+          } else {
+            // Over midnight (e.g. 22:00 to 06:00)
+            inShift = rMinutes >= sStart || rMinutes < sEnd;
+          }
+          if (inShift) onDutyShiftIds.add(sEntry.key);
+        }
+
+        final onDutySecIds = <String>{};
+        for (var a in allocsList) {
+          if (onDutyShiftIds.contains(a['shift_id']?.toString())) {
+            onDutySecIds.add(a['security_id']?.toString() ?? '');
+          }
+        }
+
+        for (var sid in onDutySecIds) {
+          final u = userMap[sid];
+          if (u != null) {
+            final uRole = (u['role'] ?? '').toString().toUpperCase();
+            if (uRole != 'ADMIN' && uRole != 'SYSTEM_SETTING') {
+              onDutyGuards.add("${u['security_name'] ?? 'Guard'} ($sid)");
+            }
+          }
+        }
+
         if (total == 0) {
           status = 'no_qr';
         } else if (i <= curIdx) {
@@ -325,19 +399,51 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           }).toList();
 
           final seen = <String>{};
+          final guardSet = <String>{};
+          DateTime? minTime;
+          DateTime? maxTime;
+
           for (var s in scannedData) {
-            if (_isSuccessStatus(s['status'])) seen.add(s['qr_id'].toString());
+            if (_isSuccessStatus(s['status'])) {
+              final qid = s['qr_id'].toString();
+              seen.add(qid);
+              final qname = s['qr_name']?.toString() ?? 'Point #$qid';
+              if (!scannedQrNames.contains(qname)) scannedQrNames.add(qname);
+
+              final gName = (s['guard_name'] ?? '').toString().trim();
+              if (gName.isNotEmpty) guardSet.add(gName);
+
+              if (s['scan_time'] != null) {
+                final st = DateTime.tryParse(s['scan_time'].toString());
+                if (st != null) {
+                  final localT = st.toLocal();
+                  if (minTime == null || localT.isBefore(minTime)) minTime = localT;
+                  if (maxTime == null || localT.isAfter(maxTime)) maxTime = localT;
+                }
+              }
+            }
           }
           scanned = seen.length;
+          completedGuards = guardSet.toList();
+          if (minTime != null) firstScanTime = DateFormat('hh:mm a').format(minTime);
+          if (maxTime != null) lastScanTime = DateFormat('hh:mm a').format(maxTime);
+
+          // Find missed QRs
+          for (var q in qrData) {
+            final qid = q['qr_id'].toString();
+            if (!seen.contains(qid)) {
+              missedQrNames.add(q['qr_name']?.toString() ?? 'Point #$qid');
+            }
+          }
           
           if (i == curIdx) {
              status = 'current';
-             guard = scannedData.isNotEmpty ? (scannedData.first['guard_name'] ?? widget.guardName) : widget.guardName;
+             guard = completedGuards.isNotEmpty ? completedGuards.join(', ') : widget.guardName;
           } else {
              if (seen.length >= total) status = 'success';
              else if (seen.length >= total / 2 && seen.length > 0) status = 'partial';
              else status = 'missed';
-             guard   = scannedData.isNotEmpty ? (scannedData.first['guard_name'] ?? '') : '';
+             guard = completedGuards.isNotEmpty ? completedGuards.join(', ') : '';
           }
         } else {
           status = 'future';
@@ -348,6 +454,12 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           'scanned': scanned, 'total': total,
           'guard': guard.isNotEmpty ? guard : (status == 'future' ? 'Upcoming' : 'No record'),
           'scanData': scannedData,
+          'completedGuards': completedGuards,
+          'firstScanTime': firstScanTime,
+          'lastScanTime': lastScanTime,
+          'onDutyGuards': onDutyGuards,
+          'scannedQrNames': scannedQrNames,
+          'missedQrNames': missedQrNames,
         });
       }
       if (mounted) setState(() { _roundSlots = slots; _isLoadingStatus = false; });
@@ -1295,7 +1407,7 @@ class _ShiftSheetState extends State<_ShiftSheet> {
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Text(
-                        assigned.isEmpty ? _t("No shift assigned") : "${assigned.length} ${_t('Shift assigned')}",
+                        assigned.isEmpty ? _t("Absent (No Shift)") : "${assigned.length} ${_t('Shift assigned')}",
                         style: TextStyle(
                           color: assigned.isEmpty ? _kRed : _kGreen,
                           fontWeight: FontWeight.bold,
@@ -1606,6 +1718,11 @@ class _TimelineItemState extends State<_TimelineItem> {
     final scanned = (slot['scanned'] ?? 0) as int;
     final total   = (slot['total']   ?? 0) as int;
     final prog    = total > 0 ? scanned / total : 0.0;
+    final completedGuards = (slot['completedGuards'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [];
+    final firstScanTime = (slot['firstScanTime'] ?? '').toString();
+    final lastScanTime = (slot['lastScanTime'] ?? '').toString();
+    final onDutyGuards = (slot['onDutyGuards'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [];
+    final missedQrNames = (slot['missedQrNames'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [];
 
     Color dotColor; IconData dotIcon; String badgeText;
     switch (status) {
@@ -1689,14 +1806,52 @@ class _TimelineItemState extends State<_TimelineItem> {
               const SizedBox(height: 10),
               const Divider(color: Colors.white10, height: 1),
               const SizedBox(height: 10),
-              _detailRow(Icons.person_rounded, "Guard", slot['guard'] ?? '—'),
+
+              // Completed breakdown
+              if (status == 'success' || (completedGuards.isNotEmpty && scanned > 0)) ...[
+                _detailRow(Icons.check_circle_outline_rounded, "Completed by", completedGuards.join(', '), textColor: _kGreen),
+                if (firstScanTime.isNotEmpty && lastScanTime.isNotEmpty)
+                  _detailRow(Icons.timer_outlined, "Scan Times", "$firstScanTime to $lastScanTime"),
+                _detailRow(Icons.done_all_rounded, "Result", "All $total checkpoints verified"),
+              ],
+
+              // Missed / Accountability breakdown
+              if (status == 'missed' || status == 'partial') ...[
+                if (completedGuards.isNotEmpty)
+                  _detailRow(Icons.person_rounded, "Partial Scan by", completedGuards.join(', '), textColor: _kOrange),
+
+                if (onDutyGuards.isNotEmpty)
+                  _detailRow(Icons.badge_rounded, "On-Duty Guard(s)", onDutyGuards.join(', '), textColor: _kRed)
+                else
+                  _detailRow(Icons.warning_amber_rounded, "On-Duty Guard(s)", "No guard allocated to shift", textColor: _kRed),
+
+                _detailRow(Icons.cancel_outlined, "Result", "$scanned of $total scanned (${total - scanned} missed)"),
+
+                // Specific missed checkpoints
+                if (missedQrNames.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    const Icon(Icons.location_off_rounded, size: 14, color: _kRed),
+                    const SizedBox(width: 8),
+                    const Text("Missed Points: ", style: TextStyle(color: _kRed, fontSize: 12, fontWeight: FontWeight.bold)),
+                    Expanded(
+                      child: Text(
+                        missedQrNames.join(', '),
+                        style: const TextStyle(color: Colors.white70, fontSize: 11),
+                      ),
+                    ),
+                  ]),
+                ],
+              ],
+
+              if (status == 'current') ...[
+                if (onDutyGuards.isNotEmpty)
+                  _detailRow(Icons.badge_rounded, "On-Duty Guard(s)", onDutyGuards.join(', '), textColor: _kCyan),
+                _detailRow(Icons.timelapse_rounded, "Live Status", "$scanned of $total scanned so far"),
+              ],
+
               const SizedBox(height: 4),
-              _detailRow(Icons.access_time_rounded, "Window",
-                "${slot['label']} (+45 min to +90 min)"),
-              if (status == 'success')
-                _detailRow(Icons.done_all_rounded, "Result", "All $total checkpoints scanned"),
-              if (status == 'missed')
-                _detailRow(Icons.warning_rounded, "Result", "$scanned of $total scanned — Round missed"),
+              _detailRow(Icons.access_time_rounded, "Round Window", "${slot['label']} (+45 min to +90 min)"),
             ],
           ]),
         ),
@@ -1704,13 +1859,13 @@ class _TimelineItemState extends State<_TimelineItem> {
     ]);
   }
 
-  Widget _detailRow(IconData icon, String label, String val) => Padding(
+  Widget _detailRow(IconData icon, String label, String val, {Color? textColor}) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 2),
     child: Row(children: [
-      Icon(icon, size: 14, color: Colors.white38),
+      Icon(icon, size: 14, color: textColor ?? Colors.white38),
       const SizedBox(width: 8),
       Text("$label: ", style: const TextStyle(color: Colors.white38, fontSize: 12)),
-      Expanded(child: Text(val, style: const TextStyle(color: Colors.white70, fontSize: 12))),
+      Expanded(child: Text(val, style: TextStyle(color: textColor ?? Colors.white70, fontSize: 12, fontWeight: textColor != null ? FontWeight.w600 : FontWeight.normal))),
     ]),
   );
 }

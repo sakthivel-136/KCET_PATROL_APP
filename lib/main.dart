@@ -201,11 +201,18 @@ class _LoginScreenState extends State<LoginScreen> {
       
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
-        if (data['role'] == 'ADMIN') {
+        final role = (data['role'] ?? '').toString().toUpperCase();
+        final isPrivileged = role == 'ADMIN' || role == 'SUPERVISOR';
+        if (role == 'ADMIN') {
           await _goHome(data['name'] ?? 'Admin', 'ADMIN', true, true);
           return;
         } else {
-          await _goHome(data['security_name'] ?? 'Guard', data['campus'] ?? 'KCET01', false, true);
+          await _goHome(
+            data['security_name'] ?? (isPrivileged ? 'Supervisor' : 'Guard'),
+            data['campus'] ?? 'KCET01',
+            isPrivileged,
+            true,
+          );
           return;
         }
       }
